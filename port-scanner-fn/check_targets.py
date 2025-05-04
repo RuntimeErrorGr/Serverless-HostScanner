@@ -7,14 +7,13 @@ import base64
 import logging
 import os
 import sys
-import time
 import subprocess
 import xml.etree.ElementTree as ET
 from ipaddress import IPv4Network
 from dotenv import load_dotenv
 import json
 
-from check_targets_utils import (
+from .check_targets_utils import (
     CheckTargetsConfig,
     CheckTargetsOptions,
     ScanType,
@@ -133,35 +132,25 @@ class CheckTargets:
                     "reason": host.reason,
                     "os_info": host.os_info,
                     "ports": host.ports,
-                    "traceroute": host.traceroute
+                    "traceroute": host.traceroute,
+                    "ssl_info": host.ssl_info,
+                    "http_headers": host.http_headers
                 }
                 for host in self.alive_targets
             ]
         }
         sys.stdout.write(json.dumps(results, indent=2))
         sys.stdout.flush()
-        sys.exit(0)
 
     def run(self):
         """Main function that runs the process of checking alive targets."""
-
+        logging.debug("Starting check targets script...")
         self.__check_alive()
         self.__parse_output()
         self.__write_output()
 
 
-def _initialize_logging():
-    log_file_path = os.getenv("LOGS_PATH", "/code/logs/") + "check_targets.log"
-    log_handler = logging.FileHandler(log_file_path)
-    formatter = logging.Formatter(
-        "%(asctime)s %(levelname)-8s %(filename)s %(funcName)s %(lineno)d  %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
-    )
-    log_handler.setFormatter(formatter)
-    log_handler.setLevel(logging.DEBUG)
-    root_logger = logging.getLogger()
-    root_logger.handlers.clear()
-    root_logger.setLevel(logging.DEBUG)
-    root_logger.addHandler(log_handler)
+
 
 
 
@@ -213,7 +202,6 @@ def parse_cli_arguments():
 
 def main():
     load_dotenv()
-    _initialize_logging()
     logging.debug("Starting check targets script...")
     args = parse_cli_arguments()
 

@@ -1,0 +1,16 @@
+version: 1.0
+provider:
+  name: openfaas
+  gateway: http://192.168.255.200:31112
+functions:
+  port-scanner-fn:
+    lang: python3-http-debian
+    handler: ./port-scanner-fn
+    image: andrei8080/port_scanner:latest
+    build_args:
+      ADDITIONAL_PACKAGE: "nmap musl-dev sudo"
+    environment:
+      LOGS_PATH: "/home/app/function/logs/"
+    annotations:
+      com.openfaas.allow-privileged: "true"
+

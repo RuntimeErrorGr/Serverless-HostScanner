@@ -15,8 +15,9 @@ def read_ports_file(filename: str) -> str:
     try:
         with open(filename, encoding="utf-8") as ports_file:
             result = ports_file.readlines()[0].rstrip("\r\n")
-        return result
+            return result
     except FileNotFoundError:
+        logging.error(f"File not found: {filename}")
         return ""
 
 
@@ -302,8 +303,11 @@ class CheckTargetsOptions:
 
     @staticmethod
     def get_default_check_targets_options():
-        tcp_ack_ping_ports = tcp_syn_ping_ports = read_ports_file("tcp.txt")
-        udp_ping_ports = read_ports_file("udp.txt")
+        tcp_ack_ping_ports = tcp_syn_ping_ports = read_ports_file("/home/app/function/tcp.txt")
+        udp_ping_ports = read_ports_file("/home/app/function/udp.txt")
+        logging.debug(f"tcp_ack_ping_ports: {tcp_ack_ping_ports}")
+        logging.debug(f"tcp_syn_ping_ports: {tcp_syn_ping_ports}")
+        logging.debug(f"udp_ping_ports: {udp_ping_ports}")
         return CheckTargetsOptions(
             echo_request=True,
             timestamp_request=True,
@@ -336,18 +340,10 @@ class Host:
         self.http_headers = {}
 
     def __str__(self):
-        return json.dumps({
-            "ip_address": self.ip_address,
-            "hostname": self.hostname,
-            "status": self.status,
-            "last_seen": self.last_seen,
-            "reason": self.reason,
-            "os_info": self.os_info,
-            "ports": self.ports,
-            "traceroute": self.traceroute,
-            "ssl_info": self.ssl_info,
-            "http_headers": self.http_headers
-        })
+        return json.dumps(self.__dict__)
+
+    def to_dict(self):
+        return self.__dict__
 
 
 class CheckTargetsConfig:

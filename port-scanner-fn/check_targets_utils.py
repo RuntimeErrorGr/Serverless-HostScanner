@@ -425,11 +425,12 @@ class CheckTargetsConfig:
         self,
         targets: list[str],
         scan_options: CheckTargetsOptions,
+        scan_id: str,
     ):
         self.targets = targets
         self.scan_options = scan_options
         self.output_file = tempfile.NamedTemporaryFile(suffix=".xml", mode="w+t")
-
+        self.scan_id = scan_id
     def get_cmd(self) -> list[str]:
         """Returns the Nmap command to be executed."""
         return list(

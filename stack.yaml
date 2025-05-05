@@ -12,6 +12,8 @@ functions:
       ADDITIONAL_PACKAGE: "nmap musl-dev sudo"
     environment:
       LOGS_PATH: "/home/app/function/logs/"
+      REDIS_HOST: "redis-nfs.default.svc.cluster.local"
+      REDIS_PORT: "6379"
     annotations:
       com.openfaas.allow-privileged: "true"
 

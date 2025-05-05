@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-nfs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-nfs
+  template:
+    metadata:
+      labels:
+        app: redis-nfs
+    spec:
+      containers:
+      - name: redis
+        image: redis:latest
+        args: ["--appendonly", "yes"]
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+      volumes:
+      - name: redis-data
+        persistentVolumeClaim:
+          claimName: redis-nfs-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-nfs
+spec:
+  selector:
+    app: redis-nfs
+  ports:
+  - protocol: TCP
+    port: 6379
+    targetPort: 6379
+  type: ClusterIP

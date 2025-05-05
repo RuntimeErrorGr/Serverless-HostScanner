@@ -35,6 +35,10 @@ def handle(event, context):
         # Add scan type
         scan_type = input_data.get('scan_type', 'default')
         sys.argv.extend(['--scan-type', scan_type])
+
+        # Add scan id
+        scan_id = input_data.get('scan_id', '')
+        sys.argv.extend(['--scan-id', scan_id])
         
         # Add custom scan options if provided
         if scan_type.upper() == 'CUSTOM':
@@ -138,7 +142,7 @@ def handle(event, context):
                 tcp_xmas_scan=args.tcp_xmas_scan
             )
 
-        config = CheckTargetsConfig(targets, scan_options)
+        config = CheckTargetsConfig(targets, scan_options, scan_id)
         scanner = CheckTargets(config)
         scanner.run()
 

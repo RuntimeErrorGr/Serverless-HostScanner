@@ -12,16 +12,16 @@ import xml.etree.ElementTree as ET
 from ipaddress import IPv4Network
 from dotenv import load_dotenv
 import json
-
+import redis
 from .check_targets_utils import (
     CheckTargetsConfig,
     CheckTargetsOptions,
     ScanType,
     NmapParseException,
     get_responding_urls,
-    calculate_timeout,
     is_netblock_cidr,
 )
+import datetime
 
 
 class CheckTargetsException(Exception):
@@ -33,6 +33,21 @@ class CheckTargets:
 
     def __init__(self, config: CheckTargetsConfig) -> None:
         self.config = config
+        redis_host = os.environ.get("REDIS_HOST", "redis-nfs.default.svc.cluster.local")
+        redis_port = int(os.environ.get("REDIS_PORT", "6379"))
+        redis_db = int(os.environ.get("REDIS_DB", "0"))
+        redis_password = os.environ.get("REDIS_PASSWORD", None)
+        
+        self.redis_client = redis.Redis(
+            host=redis_host,
+            port=redis_port,
+            db=redis_db,
+            password=redis_password,
+            socket_timeout=5,
+            socket_connect_timeout=5,
+            retry_on_timeout=True,
+            decode_responses=True  # This will automatically decode responses to strings
+        )
         self.alive_targets: set[str] = set()
 
 
@@ -53,13 +68,11 @@ class CheckTargets:
             if self.config.targets:
                 cmd = self.config.get_cmd()
                 logging.debug("Command to run: %s", cmd)
-                timeout = calculate_timeout(self.config.targets)
-                process = subprocess.run(
-                    cmd,
-                    timeout=timeout,
-                    check=True,
-                    capture_output=True,
-                )
+                process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                
+                for line in process.stdout:
+                    self.redis_client.publish(self.config.scan_id, line.strip())
+
                 logging.debug("Nmap process finished with return code: %s", process.returncode)
         except subprocess.CalledProcessError as process_exc:
             raise CheckTargetsException("Nmap process error: " + str(process_exc)) from process_exc
@@ -122,25 +135,37 @@ class CheckTargets:
     def __write_output(self) -> None:
         """Outputs the scan results in JSON format."""
         logging.debug("Alive targets: %s", self.alive_targets)
-        results = {
-            "scan_results": [
-                {
-                    "ip_address": host.ip_address,
-                    "hostname": host.hostname,
-                    "status": host.status,
-                    "last_seen": host.last_seen,
-                    "reason": host.reason,
-                    "os_info": host.os_info,
-                    "ports": host.ports,
-                    "traceroute": host.traceroute,
-                    "ssl_info": host.ssl_info,
-                    "http_headers": host.http_headers
-                }
-                for host in self.alive_targets
-            ]
-        }
-        sys.stdout.write(json.dumps(results, indent=2))
-        sys.stdout.flush()
+        try:
+            results = {
+                "scan_id": self.config.scan_id,
+                "timestamp": datetime.datetime.utcnow().isoformat(),
+                "scan_results": [
+                    {
+                        "ip_address": host.ip_address,
+                        "hostname": host.hostname,
+                        "status": host.status,
+                        "last_seen": host.last_seen,
+                        "reason": host.reason,
+                        "os_info": host.os_info,
+                        "ports": host.ports,
+                        "traceroute": host.traceroute,
+                        "ssl_info": host.ssl_info,
+                        "http_headers": host.http_headers
+                    }
+                    for host in self.alive_targets
+                ]
+            }
+
+            # Use pipeline for atomic operations
+            pipe = self.redis_client.pipeline()
+            pipe.set(f"scan:{self.config.scan_id}", json.dumps(results))
+            pipe.expire(f"scan:{self.config.scan_id}", 86400)  # Expire after 24 hours
+            pipe.execute()
+            
+            logging.debug("Successfully wrote results to Redis for scan ID: %s", self.config.scan_id)
+        except redis.RedisError as e:
+            logging.error("Failed to write results to Redis: %s", str(e))
+            raise CheckTargetsException(f"Redis write error: {str(e)}") from e
 
     def run(self):
         """Main function that runs the process of checking alive targets."""
@@ -164,7 +189,7 @@ def parse_cli_arguments():
         help="Type of scan to perform",
         default=ScanType.DEFAULT.value,
     )
-
+    parser.add_argument("--scan-id", help="Scan ID", required=True)
     args, _ = parser.parse_known_args()
 
     if args.scan_type == ScanType.DEFAULT.value:

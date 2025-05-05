@@ -7,6 +7,7 @@ functions:
     lang: python3-http-debian
     handler: ./port-scanner-fn
     image: andrei8080/port_scanner:latest
+    dockerfile: ./port-scanner-fn/Dockerfile
     build_args:
       ADDITIONAL_PACKAGE: "nmap musl-dev sudo"
     environment:

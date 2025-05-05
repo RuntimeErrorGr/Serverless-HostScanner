@@ -39,6 +39,7 @@ def handle(event, context):
         # Add custom scan options if provided
         if scan_type.upper() == 'CUSTOM':
             scan_options = input_data.get('scan_options', {})
+            logging.debug(f"Scan options: {scan_options}")
             if scan_options.get('echo_request'):
                 sys.argv.append('--echo-request')
             if scan_options.get('timestamp_request'):

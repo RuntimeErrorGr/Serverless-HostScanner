@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 import xml.etree.ElementTree as ET
 import certifi
 import requests
+import os
 import more_itertools
 
 
@@ -175,6 +176,17 @@ class CheckTargetsOptions:
         traceroute: bool = False,
         ssl_scan: bool = False,
         http_headers: bool = False,
+        tcp_ports: str | None = None,
+        udp_ports: str | None = None,
+        tcp_syn_scan: bool = False,
+        tcp_ack_scan: bool = False,
+        udp_scan: bool = False,
+        ip_protocol_scan: bool = False,
+        tcp_connect_scan: bool = False,
+        tcp_window_scan: bool = False,
+        tcp_null_scan: bool  = False,
+        tcp_fin_scan: bool  = False,
+        tcp_xmas_scan: bool  = False,
     ):
         self.echo_request = echo_request
         self.timestamp_request = timestamp_request
@@ -193,6 +205,17 @@ class CheckTargetsOptions:
         self.traceroute = traceroute
         self.ssl_scan = ssl_scan
         self.http_headers = http_headers
+        self.tcp_ports = tcp_ports
+        self.udp_ports = udp_ports
+        self.tcp_syn_scan = tcp_syn_scan
+        self.tcp_ack_scan = tcp_ack_scan
+        self.udp_scan = udp_scan
+        self.ip_protocol_scan = ip_protocol_scan
+        self.tcp_connect_scan = tcp_connect_scan
+        self.tcp_window_scan = tcp_window_scan
+        self.tcp_null_scan = tcp_null_scan
+        self.tcp_fin_scan = tcp_fin_scan
+        self.tcp_xmas_scan = tcp_xmas_scan
 
     def get_options_in_cmd_format(self):
         """
@@ -233,6 +256,46 @@ class CheckTargetsOptions:
             if self.min_rate and self.min_rate > self.MAX_RATE:
                 return f"--min-rate {self.MAX_RATE}"
             return f"--min-rate {self.min_rate}" if self.min_rate else ""
+        
+        def get_port_flags() -> str:
+            parts = []
+
+            if self.tcp_ports:
+                parts.append(f"T:{self.tcp_ports}")
+            if self.udp_ports:
+                parts.append(f"U:{self.udp_ports}")
+
+            if parts:
+                return f"-p {','.join(parts)}"
+            return ""
+
+        
+        def get_tcp_syn_scan_flag() -> str:
+            return f"-sS" if self.tcp_syn_scan else ""
+
+        def get_tcp_ack_scan_flag() -> str:
+            return f"-sA" if self.tcp_ack_scan else ""
+            
+        def get_udp_scan_flag() -> str:
+            return f"-sU" if self.udp_scan else ""
+        
+        def get_ip_protocol_scan_flag() -> str:
+            return f"-sO" if self.ip_protocol_scan else ""
+        
+        def get_tcp_connect_scan_flag() -> str:
+            return f"-sT" if self.tcp_connect_scan else ""
+        
+        def get_tcp_null_scan_flag() -> str:
+            return f"-sN" if self.tcp_null_scan else ""
+        
+        def get_tcp_fin_scan_flag() -> str:
+            return f"-sF" if self.tcp_fin_scan else ""
+        
+        def get_tcp_xmas_scan_flag() -> str:
+            return f"-sX" if self.tcp_xmas_scan else ""
+        
+        def get_tcp_window_scan_flag() -> str:
+            return f"-sW {self.tcp_window_scan}" if self.tcp_window_scan else ""
 
         def get_os_detection_flag() -> str:
             return "-O" if self.os_detection else ""
@@ -273,6 +336,16 @@ class CheckTargetsOptions:
                     get_traceroute_flag().split(),
                     get_ssl_scan_flag().split(),
                     get_http_headers_flag().split(),
+                    get_port_flags().split(),
+                    get_tcp_syn_scan_flag().split(),
+                    get_tcp_ack_scan_flag().split(),
+                    get_udp_scan_flag().split(),
+                    get_ip_protocol_scan_flag().split(),
+                    get_tcp_connect_scan_flag().split(),
+                    get_tcp_null_scan_flag().split(),
+                    get_tcp_fin_scan_flag().split(),
+                    get_tcp_window_scan_flag().split(),
+                    get_tcp_xmas_scan_flag().split(),
                 ],
             )
         )
@@ -297,17 +370,25 @@ class CheckTargetsOptions:
                 "aggressive": self.aggressive,
                 "traceroute": self.traceroute,
                 "ssl_scan": self.ssl_scan,
-                "http_headers": self.http_headers
+                "http_headers": self.http_headers,
+                "tcp_ports": self.tcp_ports,
+                "udp_ports": self.udp_ports,
+                "tcp_syn_scan": self.tcp_syn_scan,
+                "tcp_ack_scan": self.tcp_ack_scan,
+                "udp_scan": self.udp_scan,
+                "ip_protocol_scan": self.ip_protocol_scan,
+                "tcp_connect_scan": self.tcp_connect_scan,
+                "tcp_window_scan": self.tcp_window_scan,
+                "tcp_null_scan": self.tcp_null_scan,
+                "tcp_fin_scan": self.tcp_fin_scan,
+                "tcp_xmas_scan": self.tcp_xmas_scan,
             }
         )
 
     @staticmethod
     def get_default_check_targets_options():
-        tcp_ack_ping_ports = tcp_syn_ping_ports = read_ports_file("/home/app/function/tcp.txt")
-        udp_ping_ports = read_ports_file("/home/app/function/udp.txt")
-        logging.debug(f"tcp_ack_ping_ports: {tcp_ack_ping_ports}")
-        logging.debug(f"tcp_syn_ping_ports: {tcp_syn_ping_ports}")
-        logging.debug(f"udp_ping_ports: {udp_ping_ports}")
+        tcp_ack_ping_ports = tcp_syn_ping_ports = read_ports_file(os.path.join(os.path.dirname(__file__), "100-tcp.txt"))
+        udp_ping_ports = read_ports_file(os.path.join(os.path.dirname(__file__), "100-udp.txt"))
         return CheckTargetsOptions(
             echo_request=True,
             timestamp_request=True,
@@ -316,6 +397,9 @@ class CheckTargetsOptions:
             tcp_ack_ping_ports=tcp_ack_ping_ports,
             tcp_syn_ping_ports=tcp_syn_ping_ports,
             udp_ping_ports=udp_ping_ports,
+            tcp_ports=tcp_ack_ping_ports,
+            tcp_syn_scan=True,
+            tcp_ack_scan=True,
             max_retries=DefaultValues.RETRIES,
             max_rtt_timeout=DefaultValues.RTT_TIMEOUT,
             max_scan_delay=DefaultValues.SCAN_DELAY,

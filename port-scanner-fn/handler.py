@@ -62,6 +62,7 @@ def handle(event, context):
                 sys.argv.extend(['--max-scan-delay', str(scan_options['max_scan_delay'])])
             if scan_options.get('min_rate'):
                 sys.argv.extend(['--min-rate', str(scan_options['min_rate'])])
+
             if scan_options.get('os_detection'):
                 sys.argv.append('--os-detection')
             if scan_options.get('service_version'):
@@ -74,6 +75,30 @@ def handle(event, context):
                 sys.argv.append('--ssl-scan')
             if scan_options.get('http_headers'):
                 sys.argv.append('--http-headers')
+
+
+            if scan_options.get('tcp_null_scan'):
+                sys.argv.append('--tcp-null-scan')
+            if scan_options.get('tcp_fin_scan'):
+                sys.argv.append('--tcp-fin-scan')
+            if scan_options.get('tcp_xmas_scan'):
+                sys.argv.append('--tcp-xmas-scan')
+            if scan_options.get('tcp_ports'):
+                sys.argv.extend(['--tcp-ports', scan_options['tcp_ports']])
+            if scan_options.get('udp_ports'):
+                sys.argv.extend(['--udp-ports', scan_options['udp_ports']])
+            if scan_options.get('tcp_syn_scan'):
+                sys.argv.append('--tcp-syn-scan')
+            if scan_options.get('tcp_ack_scan'):
+                sys.argv.append('--tcp-ack-scan')
+            if scan_options.get('udp_scan'):
+                sys.argv.append('--udp-scan')
+            if scan_options.get('ip_protocol_scan'):
+                sys.argv.append('--ip-protocol-scan')
+            if scan_options.get('tcp_connect_scan'):
+                sys.argv.append('--tcp-connect-scan')
+            if scan_options.get('tcp_window_scan'):
+                sys.argv.append('--tcp-window-scan')
 
         # Parse arguments using existing logic
         args = parse_cli_arguments()
@@ -102,7 +127,18 @@ def handle(event, context):
                 aggressive=args.aggressive,
                 traceroute=args.traceroute,
                 ssl_scan=args.ssl_scan,
-                http_headers=args.http_headers
+                http_headers=args.http_headers,
+                tcp_syn_scan=args.tcp_syn_scan,
+                tcp_ack_scan=args.tcp_ack_scan,
+                udp_scan=args.udp_scan,
+                ip_protocol_scan=args.ip_protocol_scan,
+                tcp_connect_scan=args.tcp_connect_scan,
+                tcp_window_scan=args.tcp_window_scan,
+                tcp_ports=args.tcp_ports,
+                udp_ports=args.udp_ports,
+                tcp_null_scan=args.tcp_null_scan,
+                tcp_fin_scan=args.tcp_fin_scan,
+                tcp_xmas_scan=args.tcp_xmas_scan
             )
 
         config = CheckTargetsConfig(targets, scan_options)

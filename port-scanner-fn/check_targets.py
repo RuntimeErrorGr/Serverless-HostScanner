@@ -150,10 +150,6 @@ class CheckTargets:
         self.__write_output()
 
 
-
-
-
-
 def parse_cli_arguments():
     """
     Parse known arguments (--targets, --scan-type) first to check the scan-type.
@@ -195,6 +191,20 @@ def parse_cli_arguments():
     parser.add_argument("--ssl-scan", help="Enable SSL scan", action="store_true")
     parser.add_argument("--http-headers", help="Enable HTTP headers", action="store_true")
 
+    parser.add_argument("--tcp-null-scan", help="Enable TCP null scan", action="store_true")
+    parser.add_argument("--tcp-fin-scan", help="Enable TCP FIN scan", action="store_true")
+    parser.add_argument("--tcp-xmas-scan", help="Enable TCP XMAS scan", action="store_true")
+    
+    # Port list arguments for scan types
+    parser.add_argument("--tcp-syn-scan", help="Enable TCP SYN scan", action="store_true")
+    parser.add_argument("--tcp-ack-scan", help="Enable TCP ACK scan", action="store_true")
+    parser.add_argument("--udp-scan", help="Enable UDP scan", action="store_true")
+    parser.add_argument("--ip-protocol-scan", help="Enable IP protocol scan", action="store_true")
+    parser.add_argument("--tcp-connect-scan", help="Enable TCP connect scan", action="store_true")
+    parser.add_argument("--tcp-window-scan", help="Enable TCP window scan", action="store_true")
+    parser.add_argument("--tcp-ports", help="TCP ports to scan")
+    parser.add_argument("--udp-ports", help="UDP ports to scan")
+
     args = parser.parse_args()
     logging.debug("Check targets script arguments: %s", args)
     return args
@@ -231,7 +241,18 @@ def main():
                 aggressive=args.aggressive,
                 traceroute=args.traceroute,
                 ssl_scan=args.ssl_scan,
-                http_headers=args.http_headers
+                http_headers=args.http_headers,
+                tcp_syn_scan=args.tcp_syn_scan,
+                tcp_ack_scan=args.tcp_ack_scan,
+                udp_scan=args.udp_scan,
+                ip_protocol_scan=args.ip_protocol_scan,
+                tcp_connect_scan=args.tcp_connect_scan,
+                tcp_window_scan=args.tcp_window_scan,
+                tcp_null_scan=args.tcp_null_scan,
+                tcp_fin_scan=args.tcp_fin_scan,
+                tcp_xmas_scan=args.tcp_xmas_scan,
+                tcp_ports=args.tcp_ports,
+                udp_ports=args.udp_ports
             )
         CheckTargets(CheckTargetsConfig(targets, scan_options)).run()
     except CheckTargetsException as issue:

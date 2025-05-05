@@ -244,7 +244,6 @@ def main():
                 http_headers=args.http_headers,
                 tcp_syn_scan=args.tcp_syn_scan,
                 tcp_ack_scan=args.tcp_ack_scan,
-                udp_scan=args.udp_scan,
                 ip_protocol_scan=args.ip_protocol_scan,
                 tcp_connect_scan=args.tcp_connect_scan,
                 tcp_window_scan=args.tcp_window_scan,

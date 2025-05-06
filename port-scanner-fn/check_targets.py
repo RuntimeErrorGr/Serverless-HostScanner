@@ -46,7 +46,7 @@ class CheckTargets:
             socket_timeout=5,
             socket_connect_timeout=5,
             retry_on_timeout=True,
-            decode_responses=True  # This will automatically decode responses to strings
+            decode_responses=True
         )
         self.alive_targets: set[str] = set()
 

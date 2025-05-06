@@ -15,6 +15,15 @@ spec:
         credentialName: keycloak-tls
       hosts:
         - "app-keycloak.com"
+    - port:
+        number: 443
+        name: https-webserver
+        protocol: HTTPS
+      tls:
+        mode: SIMPLE
+        credentialName: keycloak-tls
+      hosts:
+        - "app-webserver.com"
 ---
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
@@ -34,3 +43,22 @@ spec:
             host: keycloak-service
             port:
               number: 88
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: webserver-vs
+spec:
+  hosts:
+    - "app-webserver.com"
+  gateways:
+    - app-gateway
+  http:
+    - match:
+        - uri:
+            prefix: "/"
+      route:
+        - destination:
+            host: webserver-service
+            port:
+              number: 80

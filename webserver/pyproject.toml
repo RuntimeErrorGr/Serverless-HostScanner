@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "webserver-serverless"
+version = "0.1.0"
+description = "Deps for the webserver"
+authors = ["Andrei <andrei_liviu.labau@stud.acs.upb.ro>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.115.12"
+uvicorn = "^0.34.2"
+python-dotenv = "^1.1.0"
+pydantic-settings = "^2.9.1"
+
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.5"
+black = "^25.1.0"
+isort = "^6.0.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

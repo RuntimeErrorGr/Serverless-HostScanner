@@ -12,6 +12,9 @@ fastapi = "^0.115.12"
 uvicorn = "^0.34.2"
 python-dotenv = "^1.1.0"
 pydantic-settings = "^2.9.1"
+sqlalchemy = "^2.0.40"
+alembic = "^1.15.2"
+pymysql = "^1.1.1"
 
 
 [tool.poetry.group.dev.dependencies]

@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  webserver:
+    build:
+      context: .
+      target: development
+    environment:
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_ROOT_PASSWORD=dev_root_password
+      - MYSQL_DB=webserver_dev_db
+      - MYSQL_USER=webserver_dev_user
+      - MYSQL_PASSWORD=dev_password
+      - ENV_FILE=/app/.env.dev
+      - ENV=dev
+      - API_VERSION=1.0.0
+      - PROJECT_NAME=webserver
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8080
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/app
+    depends_on:
+      - mysql
+      - redis
+
+  mysql:
+    image: mariadb:10.11
+    environment:
+      - MYSQL_ROOT_PASSWORD=dev_root_password
+      - MYSQL_DATABASE=webserver_dev_db
+      - MYSQL_USER=webserver_dev_user
+      - MYSQL_PASSWORD=dev_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  redis:
+    image: redis:7.2
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  mysql_data:
+  redis_data: 

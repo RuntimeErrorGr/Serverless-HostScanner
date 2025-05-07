@@ -1,3 +1,3 @@
-from app.api.routes.test import router as test_router
+from app.api.routes.scan import router as scan_router
 
-__all__ = ["test_router"]
+__all__ = ["scan_router"]

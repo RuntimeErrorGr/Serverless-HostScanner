@@ -14,9 +14,9 @@ spec:
     spec:
       containers:
         - name: webserver
-          image: 192.168.255.200:5000/webserver
+          image: andrei8080/webserver:latest
           ports:
-            - containerPort: 8000
+            - containerPort: 8080
           envFrom:
             - configMapRef:
                 name: webserver-config
@@ -28,7 +28,7 @@ metadata:
 spec:
   ports:
     - port: 80
-      targetPort: 8000
+      targetPort: 8080
   selector:
     app: webserver
   type: ClusterIP

@@ -7,7 +7,13 @@ data:
   PROJECT_NAME: "webserver"
   ENV: "prod"
   SERVER_HOST: "0.0.0.0"
-  SERVER_PORT: "8000"
+  SERVER_PORT: "8080"
   REDIS_HOST: redis-nfs.default.svc.cluster.local"
   REDIS_PORT: "6379"
   REDIS_DB: "0"
+  MYSQL_HOST: mariadb.default.svc.cluster.local
+  MYSQL_PORT: "3306"
+  MYSQL_ROOT_PASSWORD: Borsec01
+  MYSQL_DB: webserver_db
+  MYSQL_USER: webserver_user
+  MYSQL_PASSWORD: Borsec01

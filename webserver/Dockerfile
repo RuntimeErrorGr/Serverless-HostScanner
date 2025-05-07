@@ -34,7 +34,8 @@ RUN --mount=type=cache,target=/root/.cache \
     poetry install --without=dev
 
 FROM python-base as development
-ENV ENV=development
+ENV ENV=dev
+ENV ENV_FILE=.env.dev
 WORKDIR $PYSETUP_PATH
 
 COPY --from=builder-base $POETRY_HOME $POETRY_HOME
@@ -46,11 +47,11 @@ RUN --mount=type=cache,target=/root/.cache \
 WORKDIR /app
 COPY . /app
 
-EXPOSE 8000
+EXPOSE 8080
 CMD ["python", "-m", "app.server"]
 
 FROM python-base as production
-ENV ENV=production
+ENV ENV=prod
 COPY --from=builder-base $PYSETUP_PATH $PYSETUP_PATH
 COPY . /app
 WORKDIR /app

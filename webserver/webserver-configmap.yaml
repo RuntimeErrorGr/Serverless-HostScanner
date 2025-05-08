@@ -17,3 +17,12 @@ data:
   MYSQL_DB: webserver_db
   MYSQL_USER: webserver_user
   MYSQL_PASSWORD: Borsec01
+  KEYCLOAK_HOST: kc-auth.linuxtecha.xyz
+  WEBSERVER_HOST: kc.linuxtecha.xyz
+  # KEYCLOAK_SERVER_URL: https://keycloak.192.168.255.48.nip.io/auth
+  KEYCLOAK_CLIENT_ID: fastapi-app
+  KEYCLOAK_CLIENT_SECRET: 1o0qODjHOpYnVsjp8P6E3cSElKJKJSYS
+  KEYCLOAK_ADMIN_CLIENT_SECRET: IJizqYeDXxlfwDnq7uhQrREgPLS7B9ti
+  KEYCLOAK_REALM: fastapi-realm
+  # KEYCLOAK_CALLBACK_URI: https://webserver.192.168.255.48.nip.io/callback
+  # 30950

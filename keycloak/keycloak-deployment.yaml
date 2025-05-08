@@ -6,12 +6,26 @@ metadata:
     app: keycloak
 spec:
   ports:
-    - name: https
+    - name: http
       port: 88
       targetPort: 8080
   selector:
     app: keycloak
   type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak-service-external
+spec:
+  type: NodePort
+  selector:
+    app: keycloak
+  ports:
+    - port: 88
+      targetPort: 8080
+      protocol: TCP
+      name: http
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -31,12 +45,12 @@ spec:
     spec:
       containers:
         - name: keycloak
-          image: quay.io/keycloak/keycloak:20.0.2
+          image: quay.io/keycloak/keycloak:26.2.3
           volumeMounts:
             - name: tls
               mountPath: "/etc/ssl"
               readOnly: true
-          args: ["start"]
+          args: ["start-dev"]
           env:
             - name: KEYCLOAK_ADMIN
               value: "admin"
@@ -45,9 +59,9 @@ spec:
             - name: KC_PROXY
               value: "edge"
             - name: KC_HOSTNAME
-              value: "app-keycloak.com"
+              value: "https://kc-auth.linuxtecha.xyz"
             - name: KC_HOSTNAME_STRICT_HTTPS
-              value: "true"
+              value: "false"
             - name: KC_LOG_LEVEL
               value: "INFO"
             - name: KC_DB

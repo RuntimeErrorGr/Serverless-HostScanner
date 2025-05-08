@@ -29,6 +29,23 @@ class Settings(BaseSettings):
     MYSQL_USER: str
     MYSQL_PASSWORD: str
 
+    KEYCLOAK_HOST: str
+    KEYCLOAK_CLIENT_ID: str
+    KEYCLOAK_CLIENT_SECRET: str
+    KEYCLOAK_ADMIN_CLIENT_SECRET: str
+    KEYCLOAK_REALM: str
+    
+    WEBSERVER_HOST: str
+
+    @property
+    def KEYCLOAK_CALLBACK_URI(self):
+        return f"https://{self.WEBSERVER_HOST}/callback"
+
+    @property
+    def KEYCLOAK_SERVER_URL(self):
+        return f"https://{self.KEYCLOAK_HOST}"
+    
+
 # Load settings using env var ENV (or default to 'dev')
 settings = Settings()
 log.debug("Loaded settings for ENV: %s", settings.ENV)

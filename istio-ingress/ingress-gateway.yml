@@ -7,23 +7,16 @@ spec:
     istio: ingressgateway
   servers:
     - port:
-        number: 443
-        name: https-keycloak
+        number: 999
+        name: https
         protocol: HTTPS
       tls:
         mode: SIMPLE
         credentialName: keycloak-tls
       hosts:
-        - "app-keycloak.com"
-    - port:
-        number: 443
-        name: https-webserver
-        protocol: HTTPS
-      tls:
-        mode: SIMPLE
-        credentialName: keycloak-tls
-      hosts:
-        - "app-webserver.com"
+        # - "keycloak.192.168.255.48.nip.io"
+        # - "webserver.192.168.255.48.nip.io"
+        - "kc.linuxtecha.xyz"
 ---
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
@@ -31,7 +24,8 @@ metadata:
   name: keycloak-vs
 spec:
   hosts:
-    - "app-keycloak.com"
+    # - "keycloak.192.168.255.48.nip.io"
+    - "kc.linuxtecha.xyz"
   gateways:
     - app-gateway
   http:
@@ -50,7 +44,7 @@ metadata:
   name: webserver-vs
 spec:
   hosts:
-    - "app-webserver.com"
+    - "webserver.192.168.255.48.nip.io"
   gateways:
     - app-gateway
   http:

@@ -15,6 +15,7 @@ pydantic-settings = "^2.9.1"
 sqlalchemy = "^2.0.40"
 alembic = "^1.15.2"
 pymysql = "^1.1.1"
+fastapi_keycloak = "^1.1.0"
 
 
 [tool.poetry.group.dev.dependencies]

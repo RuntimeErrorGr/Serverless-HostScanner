@@ -32,4 +32,17 @@ spec:
   selector:
     app: webserver
   type: ClusterIP
-
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webserver-service-external
+spec:
+  type: NodePort
+  selector:
+    app: webserver
+  ports:
+    - port: 80
+      targetPort: 8080
+      protocol: TCP
+      name: http

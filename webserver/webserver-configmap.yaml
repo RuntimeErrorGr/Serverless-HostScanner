@@ -23,6 +23,6 @@ data:
   KEYCLOAK_CLIENT_ID: fastapi-app
   KEYCLOAK_CLIENT_SECRET: 1o0qODjHOpYnVsjp8P6E3cSElKJKJSYS
   KEYCLOAK_ADMIN_CLIENT_SECRET: IJizqYeDXxlfwDnq7uhQrREgPLS7B9ti
-  KEYCLOAK_REALM: fastapi-realm
+  KEYCLOAK_REALM: network-scanner
   # KEYCLOAK_CALLBACK_URI: https://webserver.192.168.255.48.nip.io/callback
   # 30950

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, DateTime
+from sqlalchemy import Column, String, Integer, DateTime, Boolean
 from sqlalchemy.orm import relationship
 from app.database.base_class import Base
 from datetime import datetime
@@ -8,7 +8,12 @@ class User(Base):
 
     id = Column(Integer, primary_key=True)
     keycloack_uuid = Column(String(36), unique=True, index=True)
-    name = Column(String(255))
+    username = Column(String(255))
+    first_name = Column(String(255))
+    last_name = Column(String(255))
+    enabled = Column(Boolean, default=True)
+    email_verified = Column(Boolean, default=False)
+
     email = Column(String(255))
     scans = relationship("Scan", back_populates="user")
     targets = relationship("Target", back_populates="user")
@@ -17,4 +22,4 @@ class User(Base):
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
     def __repr__(self):
-        return f"<User(id={self.id}, keycloack_uuid={self.keycloack_uuid}, name={self.name}, email={self.email})>"
+        return f"<User(id={self.id}, keycloack_uuid={self.keycloack_uuid}, username={self.username}, email={self.email})>"

@@ -9,6 +9,7 @@ spec:
     - name: http
       port: 88
       targetPort: 8080
+  clusterIP: 10.101.94.96
   selector:
     app: keycloak
   type: ClusterIP

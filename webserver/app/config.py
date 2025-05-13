@@ -36,10 +36,11 @@ class Settings(BaseSettings):
     KEYCLOAK_REALM: str
     
     WEBSERVER_HOST: str
+    FRONTEND_HOST: str
 
     @property
-    def KEYCLOAK_CALLBACK_URI(self):
-        return f"https://{self.WEBSERVER_HOST}/callback"
+    def FRONTEND_CALLBACK_URI(self):
+        return f"http://{self.FRONTEND_HOST}"
 
     @property
     def KEYCLOAK_SERVER_URL(self):

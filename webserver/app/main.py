@@ -21,7 +21,7 @@ api_app.add_middleware(
 
 idp.add_swagger_config(api_app)
 api_app.include_router(auth_router, prefix="/auth", tags=["auth"])
-api_app.include_router(scan_router, prefix="/scan", tags=["scan"])
+api_app.include_router(scan_router, prefix="/scans", tags=["scans"])
 
 app = FastAPI(title="Network Scanner Webserver API", version="0.1.0")
 app.mount("/api", api_app)

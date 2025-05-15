@@ -37,14 +37,27 @@ class Settings(BaseSettings):
     
     WEBSERVER_HOST: str
     FRONTEND_HOST: str
+    FRONTEND_PORT: int
+    OPENFAAS_HOST: str
+    OPENFAAS_PORT: int
+
+    SCANNER_NAME: str
 
     @property
     def FRONTEND_CALLBACK_URI(self):
-        return f"http://{self.FRONTEND_HOST}"
+        return f"http://{self.FRONTEND_HOST}:{self.FRONTEND_PORT}"
 
     @property
     def KEYCLOAK_SERVER_URL(self):
         return f"https://{self.KEYCLOAK_HOST}"
+    
+    @property
+    def OPENFAAS_FUNCTION_URL(self):
+        return f"http://{self.OPENFAAS_HOST}:{self.OPENFAAS_PORT}/function/{self.SCANNER_NAME}"
+
+    @property
+    def OPENFAAS_ASYNC_FUNCTION_URL(self):
+        return f"http://{self.OPENFAAS_HOST}:{self.OPENFAAS_PORT}/async-function/{self.SCANNER_NAME}"
     
 
 # Load settings using env var ENV (or default to 'dev')

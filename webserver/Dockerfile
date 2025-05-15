@@ -52,8 +52,11 @@ CMD ["python", "-m", "app.server"]
 
 FROM python-base as production
 ENV ENV=prod
+COPY --from=builder-base $POETRY_HOME $POETRY_HOME
 COPY --from=builder-base $PYSETUP_PATH $PYSETUP_PATH
 COPY . /app
 WORKDIR /app
+
+ENV PATH="$POETRY_HOME/bin:$VENV_PATH/bin:$PATH"
 
 CMD ["python", "-m", "app.server"]

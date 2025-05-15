@@ -1,24 +1,19 @@
 import React, { useEffect, useState } from "react";
+import { useOutletContext } from "react-router-dom";
+import { apiFetch } from "../api";
 
-function Scan({ token }) {
+function Scan() {
+  const { token } = useOutletContext();
   const [dashboardData, setDashboardData] = useState("");
 
   useEffect(() => {
     const getDashboard = async () => {
       try {
-        const res = await fetch("/api/scan/", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
+        const res = await apiFetch("/api/scans/", {}, token);
         const data = await res.json();
-        if (!res.ok) {
-            const text = await res.text();
-            throw new Error(`API error: ${res.status} - ${text}`);
-        }
         setDashboardData(data.data);
       } catch (err) {
-        console.error("Failed to fetch scans", err);
+        console.error("Failed to fetch dashboard", err);
       }
     };
 

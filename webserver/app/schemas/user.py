@@ -2,8 +2,6 @@ from pydantic import BaseModel, EmailStr, constr, ConfigDict
 from datetime import datetime
 from typing import Optional, List
 from zoneinfo import ZoneInfo
-from .target import TargetOut
-from .scan import ScanOut
 
 
 class UserBase(BaseModel):
@@ -16,7 +14,7 @@ class UserBase(BaseModel):
 
 
 class UserInDB(UserBase):
-    keycloack_uuid: str
+    keycloak_uuid: str
     created_at: datetime
     updated_at: datetime
 
@@ -30,7 +28,7 @@ class UserInDB(UserBase):
 
 class UserOut(UserBase):
     id: int
-    keycloack_uuid: str
+    keycloak_uuid: str
     created_at: datetime
-    targets: Optional[List[TargetOut]] = []
-    scans: Optional[List[ScanOut]] = []
+    targets: Optional[List] = []
+    scans: Optional[List] = []

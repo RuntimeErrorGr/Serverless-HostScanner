@@ -14,14 +14,14 @@ log = get_logger(__name__)
 router = APIRouter()
 
 def get_or_create_db_user(keycloak_user: KeycloakUser, db: Session) -> User:
-    user = db.query(User).filter(User.keycloack_uuid == keycloak_user.id).first()
+    user = db.query(User).filter(User.keycloak_uuid == keycloak_user.id).first()
 
     if user:
         log.info(f"User already exists: {user}")
         return user
     
     user = User(
-        keycloack_uuid=keycloak_user.id,
+        keycloak_uuid=keycloak_user.id,
         username=keycloak_user.username,
         first_name=keycloak_user.firstName,
         last_name=keycloak_user.lastName,

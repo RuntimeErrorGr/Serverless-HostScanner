@@ -9,7 +9,7 @@ data:
   SERVER_HOST: "0.0.0.0"
   SERVER_PORT: "8080"
 
-  REDIS_HOST: redis-nfs.default.svc.cluster.local"
+  REDIS_HOST: redis-nfs.default.svc.cluster.local
   REDIS_PORT: "6379"
   REDIS_DB: "0"
 
@@ -22,9 +22,14 @@ data:
 
   KEYCLOAK_HOST: kc-auth.linuxtecha.xyz
   WEBSERVER_HOST: kc.linuxtecha.xyz
-  FRONTEND_HOST: frontend-service-external:32524
+  FRONTEND_HOST: frontend-service-external
+  FRONTEND_PORT: "32524"
   
   KEYCLOAK_CLIENT_ID: fastapi-app
   KEYCLOAK_CLIENT_SECRET: 1o0qODjHOpYnVsjp8P6E3cSElKJKJSYS
   KEYCLOAK_ADMIN_CLIENT_SECRET: IJizqYeDXxlfwDnq7uhQrREgPLS7B9ti
   KEYCLOAK_REALM: network-scanner
+
+  OPENFAAS_HOST: gateway.openfaas.svc.cluster.local
+  OPENFAAS_PORT: "8080"
+  SCANNER_NAME: port-scanner-fn

@@ -33,6 +33,7 @@ class CheckTargets:
 
     def __init__(self, config: CheckTargetsConfig) -> None:
         self.config = config
+        self.status = "running"
         redis_host = os.environ.get("REDIS_HOST", "redis-nfs.default.svc.cluster.local")
         redis_port = int(os.environ.get("REDIS_PORT", "6379"))
         redis_db = int(os.environ.get("REDIS_DB", "0"))
@@ -75,8 +76,12 @@ class CheckTargets:
 
                 logging.debug("Nmap process finished with return code: %s", process.returncode)
         except subprocess.CalledProcessError as process_exc:
+            self.status = "failed"
+            self.redis_client.set(f"scan:{self.config.scan_id}", json.dumps({"status": self.status}))
             raise CheckTargetsException("Nmap process error: " + str(process_exc)) from process_exc
         except subprocess.TimeoutExpired as timeout_exc:
+            self.status = "failed"
+            self.redis_client.set(f"scan:{self.config.scan_id}", json.dumps({"status": self.status}))
             raise CheckTargetsException("Timeout exceeded: " + str(timeout_exc)) from timeout_exc
 
     def __parse_output(self) -> None:
@@ -85,6 +90,8 @@ class CheckTargets:
         """
 
         if not os.path.isfile(self.config.output_file.name):
+            self.status = "failed"
+            self.redis_client.set(f"scan:{self.config.scan_id}", json.dumps({"status": self.status}))
             raise CheckTargetsException("Nmap xml output file does not exist.")
 
         # File is empty, no need to parse it.
@@ -99,8 +106,12 @@ class CheckTargets:
                     self.alive_targets.add(host)
             self.__filter_network_and_broadcast_addresses()
         except ET.ParseError as parse_error:
+            self.status = "failed"
+            self.redis_client.set(f"scan:{self.config.scan_id}", json.dumps({"status": self.status}))
             raise CheckTargetsException("XML parse error: " + str(parse_error)) from parse_error
         except NmapParseException as nmap_parse_error:
+            self.status = "failed"
+            self.redis_client.set(f"scan:{self.config.scan_id}", json.dumps({"status": self.status}))
             raise CheckTargetsException(str(nmap_parse_error)) from nmap_parse_error
         finally:
             self.config.output_file.flush()
@@ -136,8 +147,10 @@ class CheckTargets:
         """Outputs the scan results in JSON format."""
         logging.debug("Alive targets: %s", self.alive_targets)
         try:
+            self.status = "completed"
             results = {
                 "scan_id": self.config.scan_id,
+                "status": self.status,
                 "timestamp": datetime.datetime.utcnow().isoformat(),
                 "scan_results": [
                     {
@@ -162,9 +175,12 @@ class CheckTargets:
             pipe.expire(f"scan:{self.config.scan_id}", 86400)  # Expire after 24 hours
             pipe.execute()
             
-            logging.debug("Successfully wrote results to Redis for scan ID: %s", self.config.scan_id)
+            logging.debug("Successfully wrote results to Redis for scan id: %s", self.config.scan_id)
+            return results
         except redis.RedisError as e:
             logging.error("Failed to write results to Redis: %s", str(e))
+            self.status = "failed"
+            self.redis_client.set(f"scan:{self.config.scan_id}", json.dumps({"status": self.status}))
             raise CheckTargetsException(f"Redis write error: {str(e)}") from e
 
     def run(self):
@@ -172,7 +188,7 @@ class CheckTargets:
         logging.debug("Starting check targets script...")
         self.__check_alive()
         self.__parse_output()
-        self.__write_output()
+        return self.__write_output()
 
 
 def parse_cli_arguments():
@@ -233,59 +249,3 @@ def parse_cli_arguments():
     args = parser.parse_args()
     logging.debug("Check targets script arguments: %s", args)
     return args
-
-
-def main():
-    load_dotenv()
-    logging.debug("Starting check targets script...")
-    args = parse_cli_arguments()
-
-    try:
-        targets = base64.b64decode(args.targets).decode("utf-8").split(",")
-        logging.debug("Targets to check: %s", str(targets))
-        scan_type = ScanType(args.scan_type)
-        logging.debug("Scan type: %s", scan_type)
-
-        if scan_type == ScanType.DEFAULT:
-            scan_options = CheckTargetsOptions.get_default_check_targets_options()
-        else:
-            scan_options = CheckTargetsOptions(
-                echo_request=args.echo_request,
-                timestamp_request=args.timestamp_request,
-                address_mask_request=args.address_mask_request,
-                ip_protocols_ping=args.ip_protocols_ping,
-                tcp_ack_ping_ports=args.tcp_ack_ping_ports,
-                tcp_syn_ping_ports=args.tcp_syn_ping_ports,
-                udp_ping_ports=args.udp_ping_ports,
-                max_retries=args.max_retries,
-                max_rtt_timeout=args.max_rtt_timeout,
-                max_scan_delay=args.max_scan_delay,
-                min_rate=args.min_rate,
-                os_detection=args.os_detection,
-                service_version=args.service_version,
-                aggressive=args.aggressive,
-                traceroute=args.traceroute,
-                ssl_scan=args.ssl_scan,
-                http_headers=args.http_headers,
-                tcp_syn_scan=args.tcp_syn_scan,
-                tcp_ack_scan=args.tcp_ack_scan,
-                ip_protocol_scan=args.ip_protocol_scan,
-                tcp_connect_scan=args.tcp_connect_scan,
-                tcp_window_scan=args.tcp_window_scan,
-                tcp_null_scan=args.tcp_null_scan,
-                tcp_fin_scan=args.tcp_fin_scan,
-                tcp_xmas_scan=args.tcp_xmas_scan,
-                tcp_ports=args.tcp_ports,
-                udp_ports=args.udp_ports
-            )
-        CheckTargets(CheckTargetsConfig(targets, scan_options)).run()
-    except CheckTargetsException as issue:
-        logging.exception("Check targets status: [Finished]. %s", issue)
-        sys.exit(1)
-    except Exception as issue:
-        logging.exception("Check targets status: [Finished]. Unknown issue: %s", issue)
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()

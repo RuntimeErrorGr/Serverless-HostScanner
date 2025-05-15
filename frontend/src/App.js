@@ -1,15 +1,26 @@
 import React, { useEffect, useState } from "react";
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from "react-router-dom";
 import Keycloak from "keycloak-js";
 import Scan from "./pages/Scan";
+import ScanStart from "./pages/ScanStart";
+import Dashboard from "./pages/Dashboard";
 
 function Spinner() {
   return (
     <div className="spinner-container">
       <div className="spinner" />
-      <div className="spinner-text">Loading...</div>
+      <div className="spinner-text"></div>
     </div>
   );
+}
+
+// ProtectedRoute: just checks for token, does not init Keycloak
+function ProtectedRoute({ token, keycloak }) {
+  if (!token) {
+    return <Navigate to="/dashboard" />;
+  }
+  // Provide token and keycloak to all children via context or props
+  return <Outlet context={{ token, keycloak }} />;
 }
 
 function App() {
@@ -25,18 +36,18 @@ function App() {
     });
 
     kc.init({ onLoad: "login-required" })
-      .then((authenticated) => {
+      .then(async (authenticated) => {
         if (authenticated) {
           setKeycloak(kc);
           setToken(kc.token);
 
+          // Sync user to DB only once after login
           try {
-            const response = fetch("/api/auth/callback", {
+            const response = await fetch("/api/auth/callback", {
               headers: {
                 Authorization: `Bearer ${kc.token}`,
               },
             });
-            
             if (!response.ok) {
               console.error("Failed to sync user:", response.status);
             }
@@ -73,10 +84,14 @@ function App() {
         <button onClick={logout} style={{ marginBottom: "1rem" }}>
           Logout
         </button>
-
         <Routes>
-          <Route path="/scan" element={<Scan token={token} />} />
-          <Route path="*" element={<Navigate to="/scan" />} />
+          <Route path="/" element={<Navigate to="/dashboard" />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/scans" element={<ProtectedRoute token={token} keycloak={keycloak} />}>
+            <Route index element={<Scan />} />
+            <Route path="start" element={<ScanStart />} />
+          </Route>
+          <Route path="*" element={<Navigate to="/dashboard" />} />
         </Routes>
       </div>
     </Router>

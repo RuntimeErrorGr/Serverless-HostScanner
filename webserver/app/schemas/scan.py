@@ -3,8 +3,12 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 from zoneinfo import ZoneInfo
 from .user import UserOut
-from .target import TargetOut
+from app.models.scan import ScanType
 
+
+class ScanStartRequest(BaseModel):
+    targets: List[str]
+    type: ScanType
 
 class ScanBase(BaseModel):
     parameters: Dict[str, Any]
@@ -35,4 +39,4 @@ class ScanOut(ScanBase):
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     user: UserOut = None
-    targets: Optional[List[TargetOut]] = []
+    target: Optional[List] = []

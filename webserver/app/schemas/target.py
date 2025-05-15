@@ -2,13 +2,11 @@ from pydantic import BaseModel, IPvAnyAddress, constr, ConfigDict
 from datetime import datetime
 from typing import Optional, List
 from zoneinfo import ZoneInfo
-from .scan import ScanOut
 from .user import UserOut
 
 
 class TargetBase(BaseModel):
-    ip_address: IPvAnyAddress
-    hostname: Optional[constr(max_length=255)] = None
+    name: constr(max_length=255)
 
 
 class TargetInDB(TargetBase):
@@ -28,5 +26,5 @@ class TargetOut(TargetBase):
     id: int
     user_id: int
     created_at: datetime
-    scans: Optional[List[ScanOut]] = []
+    scans: Optional[List] = []
     user: Optional[UserOut] = None 

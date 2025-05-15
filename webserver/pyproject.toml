@@ -9,7 +9,7 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.12"
 fastapi = "^0.115.12"
-uvicorn = "^0.34.2"
+uvicorn = {extras = ["standard"], version = "^0.34.2"}
 python-dotenv = "^1.1.0"
 pydantic-settings = "^2.9.1"
 sqlalchemy = "^2.0.40"
@@ -17,6 +17,8 @@ alembic = "^1.15.2"
 pymysql = "^1.1.1"
 fastapi_keycloak = "^1.1.0"
 python-multipart = "^0.0.20"
+celery = {extras = ["redis"], version = "^5.5.2"}
+pydantic = {extras = ["email"], version = "^2.11.4"}
 
 
 [tool.poetry.group.dev.dependencies]

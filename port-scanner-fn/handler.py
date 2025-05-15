@@ -144,17 +144,17 @@ def handle(event, context):
 
         config = CheckTargetsConfig(targets, scan_options, scan_id)
         scanner = CheckTargets(config)
-        scanner.run()
+        results = scanner.run()
 
         # Return results
         return {
             "statusCode": 200,
-            "body": json.dumps({"results": [host.to_dict() for host in scanner.alive_targets]})
+            "body": json.dumps(results)
         }
 
     except Exception as e:
         logging.error(f"Error during scan: {str(e)}")
         return {
             "statusCode": 500,
-            "body": json.dumps({"error": str(e)})
+            "body": json.dumps({"error": str(e), "scan_id": scan_id})
         } 

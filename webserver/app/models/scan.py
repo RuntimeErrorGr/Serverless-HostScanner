@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, ForeignKey, Text, JSON, DateTime
+from sqlalchemy import Column, String, Integer, ForeignKey, Text, JSON, DateTime, Table
 from sqlalchemy.orm import relationship
 from sqlalchemy import Enum as SqlEnum
 
@@ -6,6 +6,12 @@ from app.database.base_class import Base
 from datetime import datetime
 from enum import Enum
 
+scan_target_association = Table(
+    "scan_target_association",
+    Base.metadata,
+    Column("scan_id", Integer, ForeignKey("scans.id", ondelete="CASCADE"), primary_key=True),
+    Column("target_id", Integer, ForeignKey("targets.id", ondelete="CASCADE"), primary_key=True),
+)
 
 class ScanStatus(Enum):
     PENDING = "pending"
@@ -35,8 +41,11 @@ class Scan(Base):
     user_id = Column(Integer, ForeignKey('users.id'))
     user = relationship("User", back_populates="scans")
 
-    target_id = Column(Integer, ForeignKey('targets.id'))
-    target = relationship("Target", back_populates="scans")
+    targets = relationship(
+        "Target",
+        secondary=scan_target_association,
+        back_populates="scans"
+    )
 
     def __repr__(self):
         return f"<Scan(id={self.id}, status={self.status}, output={self.output}, result={self.result}, parameters={self.parameters})>"

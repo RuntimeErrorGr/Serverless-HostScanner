@@ -26,5 +26,5 @@ class TargetOut(TargetBase):
     id: int
     user_id: int
     created_at: datetime
-    scans: Optional[List] = []
+    scans: Optional[List[str]] = []
     user: Optional[UserOut] = None 

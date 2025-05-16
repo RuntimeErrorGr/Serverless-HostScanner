@@ -15,7 +15,7 @@ spec:
       containers:
         - name: celery-worker
           image: andrei8080/webserver:latest
-          command: ["poetry", "run", "celery", "-A", "app.tasks.celery_app", "worker", "--loglevel=info"]
+          command: ["poetry", "run", "celery", "-A", "app.tasks", "worker", "--loglevel=info"]
           envFrom:
             - configMapRef:
                 name: webserver-config

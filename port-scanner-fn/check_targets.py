@@ -67,6 +67,7 @@ class CheckTargets:
 
             # Run Nmap only if there are targets left to check.
             if self.config.targets:
+                self.redis_client.set(f"scan:{self.config.scan_id}", json.dumps({"status": self.status}))
                 cmd = self.config.get_cmd()
                 logging.debug("Command to run: %s", cmd)
                 process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -151,7 +152,6 @@ class CheckTargets:
             results = {
                 "scan_id": self.config.scan_id,
                 "status": self.status,
-                "timestamp": datetime.datetime.utcnow().isoformat(),
                 "scan_results": [
                     {
                         "ip_address": host.ip_address,
@@ -169,13 +169,8 @@ class CheckTargets:
                 ]
             }
 
-            # Use pipeline for atomic operations
-            pipe = self.redis_client.pipeline()
-            pipe.set(f"scan:{self.config.scan_id}", json.dumps(results))
-            pipe.expire(f"scan:{self.config.scan_id}", 86400)  # Expire after 24 hours
-            pipe.execute()
-            
             logging.debug("Successfully wrote results to Redis for scan id: %s", self.config.scan_id)
+            self.redis_client.set(f"scan:{self.config.scan_id}", json.dumps({"status": self.status}))
             return results
         except redis.RedisError as e:
             logging.error("Failed to write results to Redis: %s", str(e))

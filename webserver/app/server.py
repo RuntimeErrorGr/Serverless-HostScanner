@@ -1,6 +1,9 @@
 import uvicorn
-
+import logging
 from app.config import settings
+
+logging.getLogger("websockets.protocol").setLevel(logging.WARNING)
+logging.getLogger("websockets.server").setLevel(logging.WARNING)
 
 if __name__ == "__main__":  # pragma: no cover
     uvicorn.run(

@@ -1,6 +1,5 @@
 from fastapi_keycloak import FastAPIKeycloak
 from app.config import settings
-from enum import Enum
 
 idp = FastAPIKeycloak(
     server_url=settings.KEYCLOAK_SERVER_URL,

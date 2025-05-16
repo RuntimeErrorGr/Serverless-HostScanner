@@ -9,6 +9,7 @@ from app.models.scan import ScanType
 class ScanStartRequest(BaseModel):
     targets: List[str]
     type: ScanType
+    scan_options: Dict[str, Any] = None
 
 class ScanBase(BaseModel):
     parameters: Dict[str, Any]
@@ -39,4 +40,4 @@ class ScanOut(ScanBase):
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     user: UserOut = None
-    target: Optional[List] = []
+    targets: Optional[List[str]] = []

@@ -1,4 +1,3 @@
-
 import uuid
 import asyncio
 import json
@@ -17,7 +16,8 @@ from app.database.db import get_db
 from app.models.target import Target
 from app.models.scan import Scan, ScanStatus
 from app.models.user import User
-
+from datetime import datetime
+from app.tasks import watch_scan
 
 router = APIRouter()
 
@@ -31,6 +31,7 @@ def index(user: OIDCUser = Depends(idp.get_current_user())):
 async def websocket_scan(websocket: WebSocket, scan_uuid: str):
     await websocket.accept()
     r = aioredis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=0)
+    db = next(get_db())
     pubsub = r.pubsub()
     await pubsub.subscribe(scan_uuid)
     log.info(f"Subscribed to scan_uuid: {scan_uuid}")
@@ -38,16 +39,29 @@ async def websocket_scan(websocket: WebSocket, scan_uuid: str):
         while True:
             message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
             if message and message['type'] == 'message':
-                await websocket.send_text(message['data'].decode())
-            await asyncio.sleep(0.0001)
+                msg_text = message['data'].decode()
+                # Append to scan.output in DB
+                scan = db.query(Scan).filter_by(uuid=scan_uuid).first()
+                if scan:
+                    if scan.output:
+                        scan.output += f"\n{msg_text}"
+                    else:
+                        scan.output = msg_text
+                    db.commit()
+                await websocket.send_text(msg_text)
+            await asyncio.sleep(0.001)
     except WebSocketDisconnect:
         log.info(f"Unsubscribed from scan_uuid: {scan_uuid}")
         await pubsub.unsubscribe(scan_uuid)
         await pubsub.close()
         await r.close()
+        db.close()
     except Exception as e:
         log.error(f"Error in websocket_scan: {e}")
-        raise HTTPException(status_code=500, detail=f"Error in websocket_scan: {e}")
+        await pubsub.unsubscribe(scan_uuid)
+        await pubsub.close()
+        await r.close()
+        db.close()
 
 @router.post("/hook")
 async def scan_hook(request: Request, db: Session = Depends(get_db)):
@@ -55,10 +69,10 @@ async def scan_hook(request: Request, db: Session = Depends(get_db)):
     log.info(f"Hook called for scan_id: {data}")
 
     scan_id = data.get("scan_id")
-    status = data.get("status", "completed")
-    scan_results = data.get("scan_results")
+    status = data.get("status", ScanStatus.FAILED.value)
+    scan_results = data.get("scan_results", {})
 
-    if not scan_id or not status:
+    if not scan_id:
         raise HTTPException(status_code=400, detail="Missing scan_id or status")
 
     # Update scan in DB
@@ -77,33 +91,49 @@ async def scan_hook(request: Request, db: Session = Depends(get_db)):
         return {"message": "Scan updated"}
 
     scan.result = scan_results
-    scan.status = ScanStatus(status)
     db.commit()
     log.info(f"Scan {scan_id} updated in DB with results and status {status}")
 
     return {"message": "Scan updated"}
 
-def create_scan_entries(inserted_targets, db_user, scan_type, scan_uuid, db):
-    for target in inserted_targets:
-        log.info(f"Creating new scan for target: {target.name}")
-        new_scan = Scan(
-            user_id=db_user.id,
-            target_id=target.id,
-            type=scan_type,
-            status=ScanStatus.PENDING,
-            uuid=scan_uuid
-        )
-        db.add(new_scan)
-    db.commit()
+def create_scan_entry(inserted_targets, db_user, scan_type, scan_uuid, db, scan_options):
+    log.info(f"Creating new scan with targets: {[t.name for t in inserted_targets]}")
 
-def start_openfaas_job(targets, scan_type, scan_uuid):
+    # pack targets, scan_type and scan_options into a json
+    scan_options_json = json.dumps(scan_options)
+
+    new_scan = Scan(
+        user_id=db_user.id,
+        type=scan_type,
+        status=ScanStatus.PENDING,
+        uuid=scan_uuid,
+        targets=inserted_targets,  # associate all targets
+        parameters=scan_options_json
+    )
+    db.add(new_scan)
+    db.commit()
+    db.refresh(new_scan)
+
+def start_openfaas_job(targets, scan_type, scan_uuid, scan_options):
     payload = {
         "targets": targets,
         "scan_type": scan_type.value,
-        "scan_id": scan_uuid
+        "scan_id": scan_uuid,
+        "scan_options": scan_options
     }
     callback_url = "http://webserver-service.default.svc.cluster.local/api/scans/hook"
     headers = {"X-Callback-Url": callback_url}
+    
+    # Initialize Redis with pending status
+    try:
+        r = redis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=0)
+        r.set(scan_uuid, json.dumps({"status": "pending"}))
+        r.close()
+        log.info(f"Initialized Redis key for scan_uuid: {scan_uuid}")
+    except Exception as e:
+        r.close()
+        log.error(f"Error initializing Redis for scan {scan_uuid}: {e}")
+        
     try:
         response = requests.post(
             settings.OPENFAAS_ASYNC_FUNCTION_URL,
@@ -111,27 +141,40 @@ def start_openfaas_job(targets, scan_type, scan_uuid):
             headers=headers,
             timeout=60
         )
+        if response.status_code != 202:
+            raise HTTPException(status_code=500, detail=f"Failed to start OpenFaaS job: {response}")
         log.info(f"OpenFaaS job started: {response}")
     except Exception as e:
         log.error(f"Error starting OpenFaaS job: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to start OpenFaaS job: {e}")
-    
+        # Update Redis with failed status if OpenFaaS job fails to start
+        try:
+            r = redis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=0)
+            r.set(scan_uuid, json.dumps({"status": "failed"}))
+            r.close()
+        except Exception as redis_err:
+            r.close()
+            log.error(f"Error updating Redis for failed scan {scan_uuid}: {redis_err}")
+
 def get_or_create_targets(target_names, db_user, db):
+    """
+    For each target name, get the existing Target for this user or create a new one.
+    Returns a list of Target objects.
+    """
     inserted_targets = []
-    for target in target_names:
-        existing = db.query(Target).filter_by(user_id=db_user.id, name=target).first()
+    for target_name in target_names:
+        existing = db.query(Target).filter_by(user_id=db_user.id, name=target_name).first()
         if not existing:
-            log.info(f"Creating new target: {target}")
+            log.info(f"Creating new target: {target_name}")
             new_target = Target(
                 user_id=db_user.id,
-                name=target,
+                name=target_name,
             )
             db.add(new_target)
             db.commit()
             db.refresh(new_target)
             inserted_targets.append(new_target)
         else:
-            log.info(f"Target already exists: {target}")
+            log.info(f"Target already exists: {target_name}")
             inserted_targets.append(existing)
     return inserted_targets
 
@@ -144,7 +187,8 @@ def start_scan(
     # 1. Parse data
     targets = request.targets
     scan_type = request.type
-
+    scan_options = request.scan_options
+    
     # 2. Get the user from db with the keycloak_uuid
     db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
 
@@ -153,10 +197,13 @@ def start_scan(
 
     # 4. Create scan entry
     scan_uuid = str(uuid.uuid4())
-    create_scan_entries(inserted_targets, db_user, scan_type, scan_uuid, db)
+    create_scan_entry(inserted_targets, db_user, scan_type, scan_uuid, db, scan_options)
 
     # 5. Start OpenFaaS job
-    start_openfaas_job(targets, scan_type, scan_uuid)
-
-    # 6. Return scan_uuid to frontend
+    start_openfaas_job(targets, scan_type, scan_uuid, scan_options)
+    
+    # 6. Start Celery watch_scan task to monitor the scan status
+    watch_scan.delay(scan_uuid)
+    
+    # 7. Return scan_uuid to frontend
     return {"scan_uuid": scan_uuid}

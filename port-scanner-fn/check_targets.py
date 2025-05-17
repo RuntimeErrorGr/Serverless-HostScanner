@@ -3,25 +3,19 @@
 This script handles the process of checking responding targets.
 """
 import argparse
-import base64
 import logging
 import os
-import sys
-import subprocess
 import xml.etree.ElementTree as ET
 from ipaddress import IPv4Network
-from dotenv import load_dotenv
 import json
 import redis
 from .check_targets_utils import (
     CheckTargetsConfig,
-    CheckTargetsOptions,
     ScanType,
     NmapParseException,
     get_responding_urls,
     is_netblock_cidr,
 )
-import datetime
 
 
 class CheckTargetsException(Exception):
@@ -58,6 +52,14 @@ class CheckTargets:
         The command is run with a timeout based on the total number of targets (excepting urls).
         The output is saved in a xml file.
         """
+        import subprocess
+        import time
+        import logging
+        import json
+
+        HEARTBEAT_INTERVAL = 30  # seconds
+        last_output_time = time.time()
+        seen_lines = set()  # Track seen lines to avoid sending duplicates
 
         try:
             # URLs are checked and removed from the targets list.
@@ -67,23 +69,70 @@ class CheckTargets:
 
             # Run Nmap only if there are targets left to check.
             if self.config.targets:
-                self.redis_client.set(f"scan:{self.config.scan_id}", json.dumps({"status": self.status}))
                 cmd = self.config.get_cmd()
                 logging.debug("Command to run: %s", cmd)
-                process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
                 
-                for line in process.stdout:
-                    self.redis_client.publish(self.config.scan_id, line.strip())
+                # Send initial information
+                starting_message = f"Starting scan of {len(self.config.targets)} targets..."
+                self.redis_client.publish(self.config.scan_id, starting_message)
+                seen_lines.add(starting_message)
 
-                logging.debug("Nmap process finished with return code: %s", process.returncode)
+                # Read output line by line, send to Redis, and send heartbeat if needed
+                while True:
+                    line = process.stdout.readline()
+                    if line:
+                        line = line.strip()
+                        # Skip empty lines and already seen content
+                        if not line or line in seen_lines or "Read data files from" in line:
+                            continue
+                        
+                        seen_lines.add(line)
+                        self.redis_client.publish(self.config.scan_id, line)
+                        last_output_time = time.time()
+                    else:
+                        # No new output, check if process is still running
+                        if process.poll() is not None:
+                            break  # Process finished
+                        # Heartbeat if needed
+                        if time.time() - last_output_time > HEARTBEAT_INTERVAL:
+                            heartbeat_msg = f"[heartbeat] Scan still running at {time.strftime('%H:%M:%S')}..."
+                            self.redis_client.publish(self.config.scan_id, heartbeat_msg)
+                            last_output_time = time.time()
+                        time.sleep(0.5)  # Avoid busy loop
+
+                process.stdout.close()
+                return_code = process.wait()
+                logging.debug("Nmap process finished with return code: %s", return_code)
+
+                if return_code != 0:
+                    self.status = "failed"
+                    error_msg = f"Scan failed with return code {return_code}"
+                    self.redis_client.publish(self.config.scan_id, error_msg)
+                    self.redis_client.set(f"scan:{self.config.scan_id}", json.dumps({"status": self.status}))
+                    raise CheckTargetsException(f"Nmap process error: return code {return_code}")
+                else:
+                    self.redis_client.publish(self.config.scan_id, "Scan completed")
+
         except subprocess.CalledProcessError as process_exc:
             self.status = "failed"
+            error_msg = f"Process error: {process_exc}"
+            self.redis_client.publish(self.config.scan_id, error_msg)
             self.redis_client.set(f"scan:{self.config.scan_id}", json.dumps({"status": self.status}))
             raise CheckTargetsException("Nmap process error: " + str(process_exc)) from process_exc
         except subprocess.TimeoutExpired as timeout_exc:
             self.status = "failed"
+            error_msg = f"Timeout error: {timeout_exc}"
+            self.redis_client.publish(self.config.scan_id, error_msg)
             self.redis_client.set(f"scan:{self.config.scan_id}", json.dumps({"status": self.status}))
             raise CheckTargetsException("Timeout exceeded: " + str(timeout_exc)) from timeout_exc
+        except Exception as exc:
+            self.status = "failed"
+            error_msg = f"Unexpected error: {exc}"
+            self.redis_client.publish(self.config.scan_id, error_msg)
+            self.redis_client.set(f"scan:{self.config.scan_id}", json.dumps({"status": self.status}))
+            logging.error("Unexpected error in __check_alive: %s", exc)
+            raise
 
     def __parse_output(self) -> None:
         """
@@ -169,8 +218,14 @@ class CheckTargets:
                 ]
             }
 
-            logging.debug("Successfully wrote results to Redis for scan id: %s", self.config.scan_id)
+            # Update Redis with completed status and scan results
+            logging.debug("Writing results to Redis for scan id: %s", self.config.scan_id)
+            # Store status in the scan:<scan_id> key
             self.redis_client.set(f"scan:{self.config.scan_id}", json.dumps({"status": self.status}))
+            # Store results in the scan_results:<scan_id> key
+            self.redis_client.set(f"scan_results:{self.config.scan_id}", json.dumps(results["scan_results"]))
+            
+            logging.debug("Successfully wrote results to Redis for scan id: %s", self.config.scan_id)
             return results
         except redis.RedisError as e:
             logging.error("Failed to write results to Redis: %s", str(e))
@@ -181,6 +236,7 @@ class CheckTargets:
     def run(self):
         """Main function that runs the process of checking alive targets."""
         logging.debug("Starting check targets script...")
+        self.redis_client.set(f"scan:{self.config.scan_id}", json.dumps({"status": self.status}))
         self.__check_alive()
         self.__parse_output()
         return self.__write_output()

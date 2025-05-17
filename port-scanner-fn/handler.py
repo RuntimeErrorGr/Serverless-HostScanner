@@ -3,7 +3,9 @@ import logging
 import sys
 import base64
 import os
-from .check_targets import CheckTargets, CheckTargetsConfig, CheckTargetsOptions, ScanType, parse_cli_arguments
+
+from .check_targets import CheckTargets, CheckTargetsConfig, ScanType, parse_cli_arguments
+from .check_targets_utils import CheckTargetsOptions
 
 def _initialize_logging():
     log_file_path = os.getenv("LOGS_PATH", "/code/logs/") + "check_targets.log"
@@ -19,7 +21,7 @@ def _initialize_logging():
     root_logger.setLevel(logging.DEBUG)
     root_logger.addHandler(log_handler)
 
-def handle(event, context):
+def handle(event, _):
     try:
         # Parse input from OpenFaaS
         input_data = json.loads(event.body)

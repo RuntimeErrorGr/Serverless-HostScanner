@@ -9,7 +9,7 @@ from app.models.scan import ScanType
 class ScanStartRequest(BaseModel):
     targets: List[str]
     type: ScanType
-    scan_options: Dict[str, Any] = None
+    scan_options: Optional[Dict[str, Any]] = None
 
 class ScanBase(BaseModel):
     parameters: Dict[str, Any]

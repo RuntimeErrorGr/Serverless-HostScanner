@@ -3,10 +3,13 @@ import asyncio
 import json
 import redis
 import requests
+
+from datetime import datetime
 from fastapi import APIRouter, Depends, Request, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi_keycloak import OIDCUser
 from sqlalchemy.orm import Session
 import redis.asyncio as aioredis
+from datetime import timedelta
 
 from app.api.dependencies import idp
 from app.log import get_logger
@@ -14,43 +17,98 @@ from app.config import settings
 from app.schemas.scan import ScanStartRequest
 from app.database.db import get_db
 from app.models.target import Target
-from app.models.scan import Scan, ScanStatus
+from app.models.scan import Scan, ScanStatus, ScanType
 from app.models.user import User
-from datetime import datetime
 from app.tasks import watch_scan
 
 router = APIRouter()
 
 log = get_logger(__name__)
 
+
 @router.get("/")
-def index(user: OIDCUser = Depends(idp.get_current_user())):
-    return {"data": f"Welcome {user.preferred_username }! This is the scan page."}
+def index(user: OIDCUser = Depends(idp.get_current_user()), db: Session = Depends(get_db)):
+    # Get the user from db with the keycloak_uuid
+    db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+    
+    # Get all scans for this user
+    scans = db.query(Scan).filter_by(user_id=db_user.id).order_by(Scan.created_at.desc()).all()
+    
+    # Format scan data for frontend
+    scan_list = []
+    for scan in scans:
+        # Get target names
+        target_names = [target.name for target in scan.targets]
+        
+        scan_info = {
+            "uuid": scan.uuid,
+            "status": scan.status.value if scan.status else None,
+            "type": scan.type.value if scan.type else None,
+            "created_at": scan.created_at,
+            "started_at": scan.started_at,
+            "finished_at": scan.finished_at,
+            "targets": target_names
+        }
+        scan_list.append(scan_info)
+    
+    return {"data": scan_list}
+
 
 @router.websocket("/ws/{scan_uuid}")
 async def websocket_scan(websocket: WebSocket, scan_uuid: str):
+
+    def write_buffer(scan_uuid, db, buffer):
+        scan = db.query(Scan).filter_by(uuid=scan_uuid).first()
+        if scan:
+            if scan.output:
+                scan.output += "\n" + "\n".join(buffer)
+            else:
+                scan.output = "\n".join(buffer)
+            db.commit()
+
     await websocket.accept()
     r = aioredis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=0)
     db = next(get_db())
     pubsub = r.pubsub()
     await pubsub.subscribe(scan_uuid)
     log.info(f"Subscribed to scan_uuid: {scan_uuid}")
+
+    buffer = []
+    sent_messages = set()  # Track sent messages to avoid duplicates
+    FLUSH_LINES = 20
+    FLUSH_INTERVAL = 0.2
+    last_flush = datetime.now()
+    
     try:
         while True:
             message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+            
             if message and message['type'] == 'message':
                 msg_text = message['data'].decode()
-                # Append to scan.output in DB
-                scan = db.query(Scan).filter_by(uuid=scan_uuid).first()
-                if scan:
-                    if scan.output:
-                        scan.output += f"\n{msg_text}"
-                    else:
-                        scan.output = msg_text
-                    db.commit()
+                # Skip already seen messages and filter common noise
+                if "Read data files from" in msg_text or msg_text in sent_messages:
+                    continue
+                
+                # Add to buffer and sent_messages set
+                buffer.append(msg_text)
+                sent_messages.add(msg_text)
                 await websocket.send_text(msg_text)
-            await asyncio.sleep(0.001)
+                
+            # Flush if enough lines or enough time has passed
+            if buffer and (len(buffer) >= FLUSH_LINES or datetime.now() - last_flush > timedelta(seconds=FLUSH_INTERVAL)):
+                write_buffer(scan_uuid, db, buffer)
+                buffer.clear()
+                last_flush = datetime.now()
+                
+                # Periodically clean up sent_messages to prevent memory growth
+                if len(sent_messages) > 5000:
+                    sent_messages = set(list(sent_messages)[-2000:])
+                    
+            await asyncio.sleep(0.5)
     except WebSocketDisconnect:
+        # Final flush on disconnect
+        if buffer:
+           write_buffer(scan_uuid, db, buffer)
         log.info(f"Unsubscribed from scan_uuid: {scan_uuid}")
         await pubsub.unsubscribe(scan_uuid)
         await pubsub.close()
@@ -63,44 +121,138 @@ async def websocket_scan(websocket: WebSocket, scan_uuid: str):
         await r.close()
         db.close()
 
+
 @router.post("/hook")
 async def scan_hook(request: Request, db: Session = Depends(get_db)):
-    data = await request.json()
-    log.info(f"Hook called for scan_id: {data}")
+    """
+    Webhook called by OpenFaaS when a scan completes.
+    This endpoint only updates the scan status and triggers final processing.
+    The actual scan results are handled by the Celery task.
+    """
+    try:
+        # Add a timeout to the request.json() call
+        data = await asyncio.wait_for(request.json(), timeout=10.0)
+        log.info(f"Webhook called for scan_uuid: {data.get('scan_id')} with data: {data}")
+        
+        scan_id = data.get("scan_id")
+        scan_status = data.get("status", "completed")
 
-    scan_id = data.get("scan_id")
-    status = data.get("status", ScanStatus.FAILED.value)
-    scan_results = data.get("scan_results", {})
+        # Update scan final status in DB
+        scan = db.query(Scan).filter_by(uuid=scan_id).first()
+        if scan:
+            scan.status = scan_status
+            db.commit()
+            db.refresh(scan)
+            log.info(f"Scan {scan_id} updated in DB with status {scan_status}")
+            return {"success": True}
+        else:
+            log.error(f"Scan {scan_id} not found in DB")
+            return {"error": "Scan not found in DB"}
 
-    if not scan_id:
-        raise HTTPException(status_code=400, detail="Missing scan_id or status")
+    except Exception as e:
+        log.error(f"Error in scan_hook: {e}")
+        return {"error": "Failed to parse request body"}
 
-    # Update scan in DB
-    scan = db.query(Scan).filter_by(uuid=scan_id).first()
+
+@router.post("/start")
+def start_scan(
+    request: ScanStartRequest,
+    user: OIDCUser = Depends(idp.get_current_user()),
+    db: Session = Depends(get_db),
+):
+    # 1. Parse data
+    targets = request.targets
+    scan_type = request.type
+    scan_options = request.scan_options
+
+    payload = {
+        "targets": targets,
+        "scan_type": scan_type,
+        "scan_options": scan_options,
+        "scan_id": str(uuid.uuid4())
+    }
+    
+    # 2. Get the user from db with the keycloak_uuid
+    db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+
+    # 3. Create targets if they don't exist
+    inserted_targets = get_or_create_targets(targets, db_user, db)
+
+    # 4. Create scan entry
+    create_scan_entry(inserted_targets, db_user, payload, db)
+
+    # 5. Start OpenFaaS job
+    start_openfaas_job(payload)
+    
+    # 6. Start Celery watch_scan task to monitor the scan status
+    watch_scan.delay(payload.get("scan_id"))
+    
+    # 7. Return scan_uuid to frontend
+    return {"scan_uuid": payload.get("scan_id")}
+
+
+@router.get("/{scan_uuid}")
+def get_scan_by_uuid(
+    scan_uuid: str,
+    user: OIDCUser = Depends(idp.get_current_user()),
+    db: Session = Depends(get_db),
+):
+    # Get the user from db with the keycloak_uuid
+    db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+    
+    # Find the scan
+    scan = db.query(Scan).filter_by(uuid=scan_uuid).first()
     if not scan:
-        log.debug(f"Scan not found in DB for scan_id: {scan_id}")
-        # insert scan into DB with status failed
-        scan = Scan(
-            uuid=scan_id,
-            status=ScanStatus.FAILED,
-            result=scan_results,
-        )
-        db.add(scan)
-        db.commit()
+        raise HTTPException(status_code=404, detail="Scan not found")
+    
+    # Check if the scan belongs to the user
+    if scan.user_id != db_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to access this scan")
+    
+    # Get the target names
+    target_names = [target.name for target in scan.targets]
+    
+    return {
+        "scan_uuid": scan.uuid,
+        "status": scan.status.value if scan.status else None,
+        "type": scan.type.value if scan.type else None,
+        "parameters": scan.parameters,
+        "output": scan.output,
+        "result": scan.result,
+        "targets": target_names,
+        "created_at": scan.created_at,
+        "started_at": scan.started_at,
+        "finished_at": scan.finished_at
+    }
 
-        return {"message": "Scan updated"}
 
-    scan.result = scan_results
-    db.commit()
-    log.info(f"Scan {scan_id} updated in DB with results and status {status}")
+@router.get("/{scan_uuid}/status")
+def get_scan_status(
+    scan_uuid: str,
+    user: OIDCUser = Depends(idp.get_current_user()),
+    db: Session = Depends(get_db),
+):
+    # Get the user from db with the keycloak_uuid
+    db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+    
+    # Find the scan
+    scan = db.query(Scan).filter_by(uuid=scan_uuid).first()
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    
+    # Check if the scan belongs to the user
+    if scan.user_id != db_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to access this scan")
+    
+    return {
+        "status": scan.status.value if scan.status else None
+    }
 
-    return {"message": "Scan updated"}
 
-def create_scan_entry(inserted_targets, db_user, scan_type, scan_uuid, db, scan_options):
-    log.info(f"Creating new scan with targets: {[t.name for t in inserted_targets]}")
-
-    # pack targets, scan_type and scan_options into a json
-    scan_options_json = json.dumps(scan_options)
+def create_scan_entry(inserted_targets, db_user, payload, db):
+    scan_type = payload.get("scan_type")
+    scan_options = payload.get("scan_options")
+    scan_uuid = payload.get("scan_id")
 
     new_scan = Scan(
         user_id=db_user.id,
@@ -108,38 +260,50 @@ def create_scan_entry(inserted_targets, db_user, scan_type, scan_uuid, db, scan_
         status=ScanStatus.PENDING,
         uuid=scan_uuid,
         targets=inserted_targets,  # associate all targets
-        parameters=scan_options_json
+        parameters=scan_options
     )
     db.add(new_scan)
     db.commit()
     db.refresh(new_scan)
+    log.info(f"Scan created in DB with id: {new_scan.id} with targets: {[t.name for t in inserted_targets]}")
 
-def start_openfaas_job(targets, scan_type, scan_uuid, scan_options):
-    payload = {
+
+def start_openfaas_job(payload):
+    scan_uuid = payload.get("scan_id")
+    scan_options = payload.get("scan_options")
+    scan_type = payload.get("scan_type", ScanType.DEFAULT)
+    targets = payload.get("targets")
+
+    faas_payload = {
         "targets": targets,
         "scan_type": scan_type.value,
         "scan_id": scan_uuid,
         "scan_options": scan_options
     }
+    log.info(f"Starting OpenFaaS job with payload: {faas_payload}")
     callback_url = "http://webserver-service.default.svc.cluster.local/api/scans/hook"
     headers = {"X-Callback-Url": callback_url}
     
-    # Initialize Redis with pending status
+    # Initialize Redis with pending status and scan options
     try:
         r = redis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=0)
-        r.set(scan_uuid, json.dumps({"status": "pending"}))
+        r.set(f"scan:{scan_uuid}", json.dumps({"status": "pending"}))
+        # Also store scan options in Redis for reference
+        if scan_options:
+            r.set(f"scan_options:{scan_uuid}", json.dumps(scan_options))
         r.close()
-        log.info(f"Initialized Redis key for scan_uuid: {scan_uuid}")
+        log.info(f"Initialized Redis keys for scan_uuid: {scan_uuid}")
     except Exception as e:
-        r.close()
+        if r:
+            r.close()
         log.error(f"Error initializing Redis for scan {scan_uuid}: {e}")
         
     try:
         response = requests.post(
             settings.OPENFAAS_ASYNC_FUNCTION_URL,
-            json=payload,
+            json=faas_payload,
             headers=headers,
-            timeout=60
+            timeout=30
         )
         if response.status_code != 202:
             raise HTTPException(status_code=500, detail=f"Failed to start OpenFaaS job: {response}")
@@ -149,11 +313,13 @@ def start_openfaas_job(targets, scan_type, scan_uuid, scan_options):
         # Update Redis with failed status if OpenFaaS job fails to start
         try:
             r = redis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=0)
-            r.set(scan_uuid, json.dumps({"status": "failed"}))
+            r.set(f"scan:{scan_uuid}", json.dumps({"status": "failed"}))
             r.close()
         except Exception as redis_err:
-            r.close()
+            if r:
+                r.close()
             log.error(f"Error updating Redis for failed scan {scan_uuid}: {redis_err}")
+
 
 def get_or_create_targets(target_names, db_user, db):
     """
@@ -177,33 +343,3 @@ def get_or_create_targets(target_names, db_user, db):
             log.info(f"Target already exists: {target_name}")
             inserted_targets.append(existing)
     return inserted_targets
-
-@router.post("/start")
-def start_scan(
-    request: ScanStartRequest,
-    user: OIDCUser = Depends(idp.get_current_user()),
-    db: Session = Depends(get_db),
-):
-    # 1. Parse data
-    targets = request.targets
-    scan_type = request.type
-    scan_options = request.scan_options
-    
-    # 2. Get the user from db with the keycloak_uuid
-    db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
-
-    # 3. Create targets if they don't exist
-    inserted_targets = get_or_create_targets(targets, db_user, db)
-
-    # 4. Create scan entry
-    scan_uuid = str(uuid.uuid4())
-    create_scan_entry(inserted_targets, db_user, scan_type, scan_uuid, db, scan_options)
-
-    # 5. Start OpenFaaS job
-    start_openfaas_job(targets, scan_type, scan_uuid, scan_options)
-    
-    # 6. Start Celery watch_scan task to monitor the scan status
-    watch_scan.delay(scan_uuid)
-    
-    # 7. Return scan_uuid to frontend
-    return {"scan_uuid": scan_uuid}

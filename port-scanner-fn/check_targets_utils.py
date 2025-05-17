@@ -131,10 +131,10 @@ class DefaultValues:
     """
 
     SCAN_DELAY = 10
-    RTT_TIMEOUT = 550
-    RETRIES = 7
-    REQUEST_TIMEOUT = 20
-    MIN_RATE = 100000
+    RTT_TIMEOUT = 500
+    RETRIES = 2
+    REQUEST_TIMEOUT = 10
+    MIN_RATE = 1000
     IP_PROTOCOLS = {"icmp": 1, "igmp": 2, "ip_in_ip": 4, "tcp": 6, "sctp": 132}
 
 
@@ -419,7 +419,7 @@ class CheckTargetsConfig:
     """Class that holds elements of a Nmap check alive command."""
 
     SOURCE_PORT = 53
-    STATS_INTERVAL = 1
+    STATS_INTERVAL = 2
 
     def __init__(
         self,
@@ -438,6 +438,7 @@ class CheckTargetsConfig:
                 [
                     "nmap",
                     "-n",
+                    "-v",
                     "--reason",
                     "--source-port",
                     str(self.SOURCE_PORT),

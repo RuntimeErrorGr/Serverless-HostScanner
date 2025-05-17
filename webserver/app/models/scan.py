@@ -1,6 +1,7 @@
 from sqlalchemy import Column, String, Integer, ForeignKey, Text, JSON, DateTime, Table
 from sqlalchemy.orm import relationship
 from sqlalchemy import Enum as SqlEnum
+from sqlalchemy.dialects.mysql import LONGTEXT
 
 from app.database.base_class import Base
 from datetime import datetime
@@ -30,7 +31,7 @@ class Scan(Base):
     uuid = Column(String(36))
     status = Column(SqlEnum(ScanStatus, name="scan_status"), default=ScanStatus.PENDING)
     type = Column(SqlEnum(ScanType, name="scan_type"), default=ScanType.DEFAULT)
-    output = Column(Text)
+    output = Column(LONGTEXT)
     parameters = Column(JSON)
     result = Column(JSON)
     created_at = Column(DateTime, default=datetime.now)

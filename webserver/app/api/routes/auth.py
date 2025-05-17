@@ -1,9 +1,7 @@
-from fastapi.responses import RedirectResponse
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Response
 from fastapi_keycloak import KeycloakUser, OIDCUser
 from sqlalchemy.orm import Session
 from app.api.dependencies import idp
-from app.config import settings
 from app.database.db import get_db
 from app.models.user import User
 from app.log import get_logger

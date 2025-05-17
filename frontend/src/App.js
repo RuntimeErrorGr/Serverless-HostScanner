@@ -3,6 +3,8 @@ import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from "react-
 import Keycloak from "keycloak-js";
 import Scan from "./pages/Scan";
 import ScanStart from "./pages/ScanStart";
+import PendingRunningScan from "./pages/PendingRunningScan";
+import FinishedScan from "./pages/FinishedScan";
 import Dashboard from "./pages/Dashboard";
 
 function Spinner() {
@@ -63,6 +65,26 @@ function App() {
       });
   }, []);
 
+  useEffect(() => {
+    if (!keycloak) return;
+  
+    // Refresh token every 30 seconds
+    const refreshInterval = setInterval(() => {
+      keycloak.updateToken(60) // refresh if token will expire in 60s
+        .then(refreshed => {
+          if (refreshed) {
+            setToken(keycloak.token);
+          }
+        })
+        .catch(() => {
+          // If refresh fails, force logout
+          keycloak.logout();
+        });
+    }, 99999999);
+  
+    return () => clearInterval(refreshInterval);
+  }, [keycloak]);
+
   const logout = () => {
     if (keycloak) {
       const logoutUrl = `${keycloak.authServerUrl}/realms/${keycloak.realm}/protocol/openid-connect/logout?post_logout_redirect_uri=${encodeURIComponent(window.location.origin)}&client_id=${keycloak.clientId}`;
@@ -90,6 +112,8 @@ function App() {
           <Route path="/scans" element={<ProtectedRoute token={token} keycloak={keycloak} />}>
             <Route index element={<Scan />} />
             <Route path="start" element={<ScanStart />} />
+            <Route path=":scanUuid/running" element={<PendingRunningScan />} />
+            <Route path=":scanUuid/results" element={<FinishedScan />} />
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" />} />
         </Routes>

@@ -2,8 +2,8 @@ import uvicorn
 import logging
 from app.config import settings
 
-logging.getLogger("websockets.protocol").setLevel(logging.WARNING)
-logging.getLogger("websockets.server").setLevel(logging.WARNING)
+logging.getLogger("websockets.protocol").setLevel(logging.INFO)
+logging.getLogger("websockets.server").setLevel(logging.INFO)
 
 if __name__ == "__main__":  # pragma: no cover
     uvicorn.run(
@@ -11,5 +11,5 @@ if __name__ == "__main__":  # pragma: no cover
         host=settings.SERVER_HOST,
         port=settings.SERVER_PORT,
         reload=settings.ENV in ["test", "dev"],
-        log_level="debug" if settings.ENV in ["prod", "test", "dev"] else None,
+        log_level="info" if settings.ENV in ["prod", "test", "dev"] else "debug",
     )

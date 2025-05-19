@@ -13,20 +13,9 @@ spec:
         app: webserver
     spec:
       volumes:
-        - name: frontend-volume
-          emptyDir: {}
         - name: nginx-config
           configMap:
             name: nginx-config
-      initContainers:
-        - name: frontend-build
-          image: andrei8080/frontend:latest
-          command: ["/bin/sh", "-c"]
-          args:
-            - cp -r /app/build/* /usr/share/nginx/html/
-          volumeMounts:
-            - name: frontend-volume
-              mountPath: /usr/share/nginx/html
       containers:
         - name: webserver
           image: andrei8080/webserver:latest
@@ -36,13 +25,24 @@ spec:
             - configMapRef:
                 name: webserver-config
 
+        - name: frontend
+          image: andrei8080/frontend:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "3000"
+            - name: HOSTNAME
+              value: "0.0.0.0"
+              
+
         - name: nginx
           image: nginx:stable-alpine
           ports:
             - containerPort: 80
           volumeMounts:
-            - name: frontend-volume
-              mountPath: /usr/share/nginx/html
             - name: nginx-config
               mountPath: /etc/nginx/conf.d/default.conf
               subPath: default.conf
@@ -54,7 +54,6 @@ metadata:
 spec:
   selector:
     app: webserver
-  clusterIP: 10.105.206.131
   ports:
     - port: 80
       targetPort: 80

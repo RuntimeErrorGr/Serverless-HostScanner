@@ -59,14 +59,9 @@ export default function LoginPage() {
         <Card className="w-full max-w-md bg-black/60 backdrop-blur-md border-gray-800">
           <CardHeader className="space-y-1">
             <CardTitle className="text-2xl font-bold text-center text-white drop-shadow">Secure Access Portal</CardTitle>
-            <CardDescription className="text-center">Sign in to access your network scanning dashboard</CardDescription>
+            <CardDescription className="text-center">This platform provides network scanning capabilities for security professionals.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <p className="text-sm text-gray-400 text-center">
-                This platform provides network scanning capabilities for security professionals.
-              </p>
-            </div>
             <div className="grid grid-cols-3 gap-4 py-4">
               <div className="flex flex-col items-center text-center">
                 <Scan className="h-8 w-8 mb-2 text-blue-400" />

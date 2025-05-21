@@ -4,8 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { DataTable } from "@/components/data-table/data-table"
 import {
   Pagination,
   PaginationContent,
@@ -19,6 +18,7 @@ import { DeleteScanDialog } from "@/components/delete-scan-dialog"
 import { GenerateReportDialog } from "@/components/generate-report-dialog"
 import { Plus, MoreHorizontal, FileText, Trash2, Search } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
 // Mock data for scans - can be empty for testing empty state
 const mockScans = Array.from({ length: 20 }).map((_, i) => ({
@@ -97,6 +97,94 @@ export default function ScansPage() {
     router.push(`/scans/new-scan-id/running`)
   }
 
+  const columns = [
+    {
+      key: "name",
+      title: "Name",
+      sortable: true,
+      filterable: true,
+    },
+    {
+      key: "targets",
+      title: "Targets",
+      sortable: true,
+      filterable: true,
+    },
+    {
+      key: "status",
+      title: "Status",
+      sortable: true,
+      filterable: true,
+      render: (row: any) => (
+        <div className="flex items-center">
+          <div
+            className={`h-2 w-2 rounded-full mr-2 ${
+              row.status === "completed"
+                ? "bg-green-500"
+                : row.status === "running"
+                  ? "bg-blue-500"
+                  : row.status === "pending"
+                    ? "bg-yellow-500"
+                    : "bg-red-500"
+            }`}
+          />
+          <span className="capitalize">{row.status}</span>
+        </div>
+      ),
+    },
+    {
+      key: "startTime",
+      title: "Start Time",
+      sortable: true,
+      filterable: true,
+      render: (row: any) => new Date(row.startTime).toLocaleString(),
+    },
+    {
+      key: "endTime",
+      title: "End Time",
+      sortable: true,
+      filterable: true,
+      render: (row: any) =>
+        row.status === "completed" || row.status === "failed" ? new Date(row.endTime).toLocaleString() : "-",
+    },
+    {
+      key: "actions",
+      title: "Actions",
+      render: (row: any) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="h-8 w-8 p-0" onClick={(e) => e.stopPropagation()}>
+              <span className="sr-only">Open menu</span>
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation()
+                handleGenerateReport(row)
+              }}
+              disabled={row.status !== "completed"}
+            >
+              <FileText className="mr-2 h-4 w-4" />
+              Generate Report
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation()
+                handleDeleteScan(row)
+              }}
+              className="text-red-600"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete Scan
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ]
+
   return (
     <div className="space-y-6 w-full">
       <div className="flex items-center justify-between">
@@ -111,86 +199,23 @@ export default function ScansPage() {
 
       <Card className="w-full">
         <CardContent className="p-0">
-          {scans.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Targets</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Start Time</TableHead>
-                  <TableHead>End Time</TableHead>
-                  <TableHead className="w-[100px]">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {currentScans.map((scan) => (
-                  <TableRow key={scan.id} className="cursor-pointer hover:bg-muted/50">
-                    <TableCell onClick={() => handleScanClick(scan)}>{scan.name}</TableCell>
-                    <TableCell onClick={() => handleScanClick(scan)}>{scan.targets}</TableCell>
-                    <TableCell onClick={() => handleScanClick(scan)}>
-                      <div className="flex items-center">
-                        <div
-                          className={`h-2 w-2 rounded-full mr-2 ${
-                            scan.status === "completed"
-                              ? "bg-green-500"
-                              : scan.status === "running"
-                                ? "bg-blue-500"
-                                : scan.status === "pending"
-                                  ? "bg-yellow-500"
-                                  : "bg-red-500"
-                          }`}
-                        />
-                        <span className="capitalize">{scan.status}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell onClick={() => handleScanClick(scan)}>
-                      {new Date(scan.startTime).toLocaleString()}
-                    </TableCell>
-                    <TableCell onClick={() => handleScanClick(scan)}>
-                      {scan.status === "completed" || scan.status === "failed"
-                        ? new Date(scan.endTime).toLocaleString()
-                        : "-"}
-                    </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0">
-                            <span className="sr-only">Open menu</span>
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => handleGenerateReport(scan)}
-                            disabled={scan.status !== "completed"}
-                          >
-                            <FileText className="mr-2 h-4 w-4" />
-                            Generate Report
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleDeleteScan(scan)} className="text-red-600">
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete Scan
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-              <Search className="h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium">No scans found</h3>
-              <p className="text-muted-foreground mt-2 mb-6">
-                You haven't run any network scans yet. Start your first scan to begin discovering network information.
-              </p>
-              <Button onClick={() => setIsStartScanModalOpen(true)}>
-                <Plus className="mr-2 h-4 w-4" /> Start New Scan
-              </Button>
-            </div>
-          )}
+          <DataTable
+            data={currentScans}
+            columns={columns}
+            onRowClick={handleScanClick}
+            emptyState={
+              <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+                <Search className="h-12 w-12 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-medium">No scans found</h3>
+                <p className="text-muted-foreground mt-2 mb-6">
+                  You haven't run any network scans yet. Start your first scan to begin discovering network information.
+                </p>
+                <Button onClick={() => setIsStartScanModalOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" /> Start New Scan
+                </Button>
+              </div>
+            }
+          />
         </CardContent>
       </Card>
 

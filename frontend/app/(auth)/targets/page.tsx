@@ -4,8 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { DataTable } from "@/components/data-table/data-table"
 import {
   Pagination,
   PaginationContent,
@@ -15,8 +14,9 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination"
 import { DeleteTargetDialog } from "@/components/delete-target-dialog"
-import { MoreHorizontal, Trash2, Target, Plus } from "lucide-react"
+import { MoreHorizontal, Trash2, TargetIcon, Plus } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
 // Mock data for targets - can be empty for testing empty state
 const mockTargets = Array.from({ length: 20 }).map((_, i) => ({
@@ -62,6 +62,67 @@ export default function TargetsPage() {
     setIsDeleteDialogOpen(false)
   }
 
+  const columns = [
+    {
+      key: "name",
+      title: "Name",
+      sortable: true,
+      filterable: true,
+    },
+    {
+      key: "type",
+      title: "Type",
+      sortable: true,
+      filterable: true,
+      render: (row: any) => <span className="capitalize">{row.type}</span>,
+    },
+    {
+      key: "value",
+      title: "Value",
+      sortable: true,
+      filterable: true,
+    },
+    {
+      key: "dateAdded",
+      title: "Date Added",
+      sortable: true,
+      filterable: true,
+      render: (row: any) => new Date(row.dateAdded).toLocaleString(),
+    },
+    {
+      key: "totalScans",
+      title: "Total Scans",
+      sortable: true,
+      filterable: true,
+    },
+    {
+      key: "actions",
+      title: "Actions",
+      render: (row: any) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="h-8 w-8 p-0" onClick={(e) => e.stopPropagation()}>
+              <span className="sr-only">Open menu</span>
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation()
+                handleDeleteTarget(row)
+              }}
+              className="text-red-600"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete Target
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ]
+
   return (
     <div className="space-y-6 w-full">
       <div className="flex items-center justify-between">
@@ -76,62 +137,23 @@ export default function TargetsPage() {
 
       <Card className="w-full">
         <CardContent className="p-0">
-          {targets.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Value</TableHead>
-                  <TableHead>Date Added</TableHead>
-                  <TableHead>Total Scans</TableHead>
-                  <TableHead className="w-[100px]">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {currentTargets.map((target) => (
-                  <TableRow key={target.id} className="cursor-pointer hover:bg-muted/50">
-                    <TableCell onClick={() => handleTargetClick(target)}>{target.name}</TableCell>
-                    <TableCell onClick={() => handleTargetClick(target)}>
-                      <span className="capitalize">{target.type}</span>
-                    </TableCell>
-                    <TableCell onClick={() => handleTargetClick(target)}>{target.value}</TableCell>
-                    <TableCell onClick={() => handleTargetClick(target)}>
-                      {new Date(target.dateAdded).toLocaleString()}
-                    </TableCell>
-                    <TableCell onClick={() => handleTargetClick(target)}>{target.totalScans}</TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0">
-                            <span className="sr-only">Open menu</span>
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleDeleteTarget(target)} className="text-red-600">
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete Target
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-              <Target className="h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium">No targets found</h3>
-              <p className="text-muted-foreground mt-2 mb-6">
-                You haven't added any targets yet. Add your first target to begin scanning.
-              </p>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" /> Add Target
-              </Button>
-            </div>
-          )}
+          <DataTable
+            data={currentTargets}
+            columns={columns}
+            onRowClick={handleTargetClick}
+            emptyState={
+              <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+                <TargetIcon className="h-12 w-12 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-medium">No targets found</h3>
+                <p className="text-muted-foreground mt-2 mb-6">
+                  You haven't added any targets yet. Add your first target to begin scanning.
+                </p>
+                <Button>
+                  <Plus className="mr-2 h-4 w-4" /> Add Target
+                </Button>
+              </div>
+            }
+          />
         </CardContent>
       </Card>
 

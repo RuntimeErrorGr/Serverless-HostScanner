@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { BarChart3, Layers, Target, FileText, Shield } from "lucide-react"
+import { BarChart3, Layers, Target, FileText, Shield, AlertTriangle } from "lucide-react"
 
 import {
   Sidebar,
@@ -35,6 +35,11 @@ export function AppSidebar() {
       href: "/targets",
     },
     {
+      title: "Findings",
+      icon: AlertTriangle,
+      href: "/findings",
+    },
+    {
       title: "Reports",
       icon: FileText,
       href: "/reports",
@@ -65,7 +70,7 @@ export function AppSidebar() {
             <SidebarMenuItem key={item.href} className="mb-3">
               <SidebarMenuButton
                 asChild
-                isActive={pathname === item.href}
+                isActive={pathname === item.href || pathname.startsWith(`${item.href}/`)}
                 tooltip={item.title}
                 className="py-3 text-base"
               >
@@ -78,7 +83,6 @@ export function AppSidebar() {
           ))}
         </SidebarMenu>
       </SidebarContent>
-      {/* Removed the logout button from the footer */}
       <SidebarFooter className="border-t p-4">
         <div className="text-sm text-muted-foreground">Network Scanner v1.0</div>
       </SidebarFooter>

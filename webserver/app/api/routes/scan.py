@@ -70,8 +70,9 @@ async def websocket_scan(websocket: WebSocket, scan_uuid: str):
     r = aioredis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=0)
     db = next(get_db())
     pubsub = r.pubsub()
-    await pubsub.subscribe(scan_uuid)
-    log.info(f"Subscribed to scan_uuid: {scan_uuid}")
+    # Subscribe to both main channel and progress channel
+    await pubsub.subscribe(scan_uuid, f"{scan_uuid}:progress")
+    log.info(f"Subscribed to scan_uuid: {scan_uuid} and progress channel")
 
     buffer = []
     sent_messages = set()  # Track sent messages to avoid duplicates
@@ -81,18 +82,33 @@ async def websocket_scan(websocket: WebSocket, scan_uuid: str):
     
     try:
         while True:
-            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=5.0)
             
             if message and message['type'] == 'message':
+                channel = message['channel'].decode()
                 msg_text = message['data'].decode()
-                # Skip already seen messages and filter common noise
-                if "Read data files from" in msg_text or msg_text in sent_messages:
-                    continue
                 
-                # Add to buffer and sent_messages set
-                buffer.append(msg_text)
-                sent_messages.add(msg_text)
-                await websocket.send_text(msg_text)
+                if channel == f"{scan_uuid}:progress":
+                    # Send progress update as a special message type
+                    try:
+                        progress = float(msg_text)
+                        await websocket.send_json({
+                            "type": "progress",
+                            "value": progress
+                        })
+                    except ValueError:
+                        log.error(f"Invalid progress value received: {msg_text}")
+                else:
+                    # Regular scan output handling
+                    if "Read data files from" in msg_text or msg_text in sent_messages:
+                        continue
+                    
+                    buffer.append(msg_text)
+                    sent_messages.add(msg_text)
+                    await websocket.send_json({
+                        "type": "output",
+                        "value": msg_text
+                    })
                 
             # Flush if enough lines or enough time has passed
             if buffer and (len(buffer) >= FLUSH_LINES or datetime.now() - last_flush > timedelta(seconds=FLUSH_INTERVAL)):
@@ -110,13 +126,13 @@ async def websocket_scan(websocket: WebSocket, scan_uuid: str):
         if buffer:
            write_buffer(scan_uuid, db, buffer)
         log.info(f"Unsubscribed from scan_uuid: {scan_uuid}")
-        await pubsub.unsubscribe(scan_uuid)
+        await pubsub.unsubscribe(scan_uuid, f"{scan_uuid}:progress")
         await pubsub.close()
         await r.close()
         db.close()
     except Exception as e:
         log.error(f"Error in websocket_scan: {e}")
-        await pubsub.unsubscribe(scan_uuid)
+        await pubsub.unsubscribe(scan_uuid, f"{scan_uuid}:progress")
         await pubsub.close()
         await r.close()
         db.close()

@@ -18,6 +18,7 @@ import {
   Pie,
   Cell,
 } from "recharts"
+import { useThemeColors } from "@/hooks/use-theme-colors"
 
 // Mock data for dashboard
 const mockData = {
@@ -58,9 +59,6 @@ const mockData = {
   ],
 }
 
-// Colors for charts
-const COLORS = ["#000000", "#333333", "#555555", "#777777", "#999999"]
-
 // Empty state component for charts
 function EmptyChart({ title, description }: { title: string; description: string }) {
   return (
@@ -75,6 +73,7 @@ function EmptyChart({ title, description }: { title: string; description: string
 export default function DashboardPage() {
   // For testing empty state, set this to true
   const isEmpty = false
+  const { chartColors, pieColors, lineColors, barColors, gridColor, textColor } = useThemeColors()
 
   return (
     <div className="space-y-6 w-full">
@@ -142,12 +141,20 @@ export default function DashboardPage() {
                 {!isEmpty ? (
                   <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={mockData.scanActivityData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" />
-                      <YAxis />
-                      <Tooltip formatter={(value) => [`${value} scans`, "Scans"]} />
-                      <Legend />
-                      <Bar dataKey="value" name="Scans" fill="#000000" />
+                      <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+                      <XAxis dataKey="name" stroke={textColor} />
+                      <YAxis stroke={textColor} />
+                      <Tooltip
+                        formatter={(value) => [`${value} scans`, "Scans"]}
+                        contentStyle={{
+                          backgroundColor: "var(--background)",
+                          color: textColor,
+                          border: "1px solid var(--border)",
+                        }}
+                        labelStyle={{ color: textColor }}
+                      />
+                      <Legend wrapperStyle={{ color: textColor }} />
+                      <Bar dataKey="value" name="Scans" fill={barColors.primary} />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
@@ -167,12 +174,26 @@ export default function DashboardPage() {
                 {!isEmpty ? (
                   <ResponsiveContainer width="100%" height={300}>
                     <LineChart data={mockData.vulnerabilityTrendData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" />
-                      <YAxis />
-                      <Tooltip formatter={(value) => [`${value} vulnerabilities`, "Vulnerabilities"]} />
-                      <Legend />
-                      <Line type="monotone" dataKey="value" name="Vulnerabilities" stroke="#000000" strokeWidth={2} />
+                      <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+                      <XAxis dataKey="name" stroke={textColor} />
+                      <YAxis stroke={textColor} />
+                      <Tooltip
+                        formatter={(value) => [`${value} vulnerabilities`, "Vulnerabilities"]}
+                        contentStyle={{
+                          backgroundColor: "var(--background)",
+                          color: textColor,
+                          border: "1px solid var(--border)",
+                        }}
+                        labelStyle={{ color: textColor }}
+                      />
+                      <Legend wrapperStyle={{ color: textColor }} />
+                      <Line
+                        type="monotone"
+                        dataKey="value"
+                        name="Vulnerabilities"
+                        stroke={lineColors.primary}
+                        strokeWidth={2}
+                      />
                     </LineChart>
                   </ResponsiveContainer>
                 ) : (
@@ -203,11 +224,19 @@ export default function DashboardPage() {
                         label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                       >
                         {mockData.openPortsData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          <Cell key={`cell-${index}`} fill={pieColors[index % pieColors.length]} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(value) => [`${value} instances`, "Count"]} />
-                      <Legend />
+                      <Tooltip
+                        formatter={(value) => [`${value} instances`, "Count"]}
+                        contentStyle={{
+                          backgroundColor: "var(--background)",
+                          color: textColor,
+                          border: "1px solid var(--border)",
+                        }}
+                        labelStyle={{ color: textColor }}
+                      />
+                      <Legend wrapperStyle={{ color: textColor }} />
                     </PieChart>
                   </ResponsiveContainer>
                 ) : (
@@ -236,11 +265,19 @@ export default function DashboardPage() {
                         label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                       >
                         {mockData.protocolsData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          <Cell key={`cell-${index}`} fill={pieColors[index % pieColors.length]} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(value) => [`${value} instances`, "Count"]} />
-                      <Legend />
+                      <Tooltip
+                        formatter={(value) => [`${value} instances`, "Count"]}
+                        contentStyle={{
+                          backgroundColor: "var(--background)",
+                          color: textColor,
+                          border: "1px solid var(--border)",
+                        }}
+                        labelStyle={{ color: textColor }}
+                      />
+                      <Legend wrapperStyle={{ color: textColor }} />
                     </PieChart>
                   </ResponsiveContainer>
                 ) : (

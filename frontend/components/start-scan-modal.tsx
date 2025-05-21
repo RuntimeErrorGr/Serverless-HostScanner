@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -18,10 +18,12 @@ import { Textarea } from "@/components/ui/textarea"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import * as z from "zod"
-import { Upload } from "lucide-react"
+import { Upload, X } from "lucide-react"
 
 // Validation schema for the form
 const formSchema = z.object({
@@ -32,6 +34,10 @@ const formSchema = z.object({
   portTypes: z.array(z.string()).optional(),
   tcpPorts: z.string().optional(),
   udpPorts: z.string().optional(),
+  tcpTopPorts: z.string().optional(),
+  udpTopPorts: z.string().optional(),
+  detectionTechnique: z.string().optional(),
+  hostDiscoveryProbes: z.array(z.string()).optional(),
   options: z.array(z.string()).optional(),
   timing: z.string().optional(),
 })
@@ -45,6 +51,10 @@ const defaultValues: Partial<ScanFormValues> = {
   portTypes: [],
   tcpPorts: "",
   udpPorts: "",
+  tcpTopPorts: "",
+  udpTopPorts: "",
+  detectionTechnique: "syn",
+  hostDiscoveryProbes: [],
   options: [],
   timing: "T3",
 }
@@ -58,11 +68,67 @@ interface StartScanModalProps {
 export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProps) {
   const [isCustom, setIsCustom] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [tcpInputDisabled, setTcpInputDisabled] = useState(false)
+  const [udpInputDisabled, setUdpInputDisabled] = useState(false)
 
   const form = useForm<ScanFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues,
   })
+
+  // Watch for changes in port inputs
+  const tcpPorts = form.watch("tcpPorts")
+  const udpPorts = form.watch("udpPorts")
+  const tcpTopPorts = form.watch("tcpTopPorts")
+  const udpTopPorts = form.watch("udpTopPorts")
+
+  // Update disabled states based on input values
+  useEffect(() => {
+    setTcpInputDisabled(!!tcpTopPorts)
+    setUdpInputDisabled(!!udpTopPorts)
+  }, [tcpTopPorts, udpTopPorts])
+
+  const handleTcpTopPortsChange = (value: string) => {
+    // If selecting "disabled", clear the dropdown value
+    if (value === "disabled") {
+      form.setValue("tcpTopPorts", "")
+      setTcpInputDisabled(false)
+      return
+    }
+    
+    form.setValue("tcpTopPorts", value)
+    form.setValue("tcpPorts", "")
+    setTcpInputDisabled(true)
+  }
+
+  const handleUdpTopPortsChange = (value: string) => {
+    // If selecting "disabled", clear the dropdown value
+    if (value === "disabled") {
+      form.setValue("udpTopPorts", "")
+      setUdpInputDisabled(false)
+      return
+    }
+    
+    form.setValue("udpTopPorts", value)
+    form.setValue("udpPorts", "")
+    setUdpInputDisabled(true)
+  }
+
+  const handleTcpPortsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    form.setValue("tcpPorts", value)
+    if (value) {
+      form.setValue("tcpTopPorts", "")
+    }
+  }
+
+  const handleUdpPortsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    form.setValue("udpPorts", value)
+    if (value) {
+      form.setValue("udpTopPorts", "")
+    }
+  }
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -113,11 +179,24 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                   <FormLabel>Targets</FormLabel>
                   <FormControl>
                     <div className="space-y-2">
-                      <Textarea
-                        placeholder="Enter targets (hostnames, URLs, IP addresses, ranges, or CIDR format)"
-                        className="min-h-[100px]"
-                        {...field}
-                      />
+                      <div className="relative">
+                        <Textarea
+                          placeholder="Enter targets (hostnames, URLs, IP addresses, ranges, or CIDR format)"
+                          className="min-h-[100px] pr-8"
+                          {...field}
+                        />
+                        {field.value && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="absolute right-2 top-2 h-6 w-6 p-0"
+                            onClick={() => form.setValue("targets", "")}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
                       <div className="flex items-center">
                         <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
                           <Upload className="mr-2 h-4 w-4" />
@@ -160,24 +239,58 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                         defaultValue={field.value}
                         className="flex flex-col space-y-1"
                       >
-                        <FormItem className="flex items-center space-x-3 space-y-0">
-                          <FormControl>
-                            <RadioGroupItem value="default" />
-                          </FormControl>
-                          <FormLabel className="font-normal">Default</FormLabel>
-                        </FormItem>
-                        <FormItem className="flex items-center space-x-3 space-y-0">
-                          <FormControl>
-                            <RadioGroupItem value="deep" />
-                          </FormControl>
-                          <FormLabel className="font-normal">Deep</FormLabel>
-                        </FormItem>
-                        <FormItem className="flex items-center space-x-3 space-y-0">
-                          <FormControl>
-                            <RadioGroupItem value="custom" />
-                          </FormControl>
-                          <FormLabel className="font-normal">Custom</FormLabel>
-                        </FormItem>
+                        <TooltipProvider>
+                          <FormItem className="flex items-center space-x-3 space-y-0">
+                            <FormControl>
+                              <RadioGroupItem value="default" />
+                            </FormControl>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <FormLabel className="font-normal cursor-help">Default</FormLabel>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-sm">
+                                <p>
+                                  Basic scan that checks the most common 1000 ports. Fast and suitable for most
+                                  scenarios. Duration: 1-5 minutes per target.
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </FormItem>
+
+                          <FormItem className="flex items-center space-x-3 space-y-0">
+                            <FormControl>
+                              <RadioGroupItem value="deep" />
+                            </FormControl>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <FormLabel className="font-normal cursor-help">Deep</FormLabel>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-sm">
+                                <p>
+                                  Comprehensive scan that includes service detection, OS detection, and script scanning
+                                  on all ports. Slower but more thorough. Duration: 10-30 minutes per target.
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </FormItem>
+
+                          <FormItem className="flex items-center space-x-3 space-y-0">
+                            <FormControl>
+                              <RadioGroupItem value="custom" />
+                            </FormControl>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <FormLabel className="font-normal cursor-help">Custom</FormLabel>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-sm">
+                                <p>
+                                  Configure your own scan parameters including port selection, detection techniques, and
+                                  timing. Duration varies based on settings.
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </FormItem>
+                        </TooltipProvider>
                       </RadioGroup>
                     </FormControl>
                     <FormMessage />
@@ -247,15 +360,53 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>TCP Ports</FormLabel>
-                            <FormControl>
-                              <Input
-                                placeholder="e.g., 80,443,8080 or 1-1000"
-                                {...field}
-                                disabled={!form.watch("portTypes")?.includes("tcp")}
+                            <div className="space-y-2">
+                              <div className="relative">
+                                <FormControl>
+                                  <Input
+                                    placeholder="e.g., 80,443,8080 or 1-1000"
+                                    {...field}
+                                    disabled={tcpInputDisabled}
+                                    onChange={handleTcpPortsChange}
+                                  />
+                                </FormControl>
+                                {field.value && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 h-6 w-6 p-0"
+                                    onClick={() => form.setValue("tcpPorts", "")}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
+                              <FormField
+                                control={form.control}
+                                name="tcpTopPorts"
+                                render={({ field }) => (
+                                  <Select
+                                    onValueChange={handleTcpTopPortsChange}
+                                    value={field.value || "disabled"}
+                                    disabled={!!tcpPorts}
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue placeholder="Or select top ports" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="disabled">Disabled</SelectItem>
+                                      <SelectItem value="10">Top 10 ports</SelectItem>
+                                      <SelectItem value="100">Top 100 ports</SelectItem>
+                                      <SelectItem value="1000">Top 1000 ports</SelectItem>
+                                      <SelectItem value="5000">Top 5000 ports</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                )}
                               />
-                            </FormControl>
+                            </div>
                             <FormDescription>
-                              Enter specific ports (comma-separated) or ranges (e.g., 80-100)
+                              Enter specific ports (comma-separated) or ranges (e.g., 80-100), or select from top ports
                             </FormDescription>
                             <FormMessage />
                           </FormItem>
@@ -268,15 +419,53 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>UDP Ports</FormLabel>
-                            <FormControl>
-                              <Input
-                                placeholder="e.g., 53,123,161 or 1-1000"
-                                {...field}
-                                disabled={!form.watch("portTypes")?.includes("udp")}
+                            <div className="space-y-2">
+                              <div className="relative">
+                                <FormControl>
+                                  <Input
+                                    placeholder="e.g., 53,123,161 or 1-1000"
+                                    {...field}
+                                    disabled={udpInputDisabled}
+                                    onChange={handleUdpPortsChange}
+                                  />
+                                </FormControl>
+                                {field.value && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 h-6 w-6 p-0"
+                                    onClick={() => form.setValue("udpPorts", "")}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
+                              <FormField
+                                control={form.control}
+                                name="udpTopPorts"
+                                render={({ field }) => (
+                                  <Select
+                                    onValueChange={handleUdpTopPortsChange}
+                                    value={field.value || "disabled"}
+                                    disabled={!!udpPorts}
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue placeholder="Or select top ports" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="disabled">Disabled</SelectItem>
+                                      <SelectItem value="10">Top 10 ports</SelectItem>
+                                      <SelectItem value="100">Top 100 ports</SelectItem>
+                                      <SelectItem value="1000">Top 1000 ports</SelectItem>
+                                      <SelectItem value="5000">Top 5000 ports</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                )}
                               />
-                            </FormControl>
+                            </div>
                             <FormDescription>
-                              Enter specific ports (comma-separated) or ranges (e.g., 80-100)
+                              Enter specific ports (comma-separated) or ranges (e.g., 80-100), or select from top ports
                             </FormDescription>
                             <FormMessage />
                           </FormItem>
@@ -285,6 +474,96 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                     </TabsContent>
 
                     <TabsContent value="detection" className="space-y-4">
+                      <FormField
+                        control={form.control}
+                        name="detectionTechnique"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Detection Technique</FormLabel>
+                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select a detection technique" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="syn">TCP SYN scan</SelectItem>
+                                <SelectItem value="connect">TCP Connect scan</SelectItem>
+                                <SelectItem value="ack">TCP ACK scan</SelectItem>
+                                <SelectItem value="window">TCP Window scan</SelectItem>
+                                <SelectItem value="maimon">TCP Maimon scan</SelectItem>
+                                <SelectItem value="null">TCP Null scan</SelectItem>
+                                <SelectItem value="fin">TCP FIN scan</SelectItem>
+                                <SelectItem value="xmas">TCP Xmas scan</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormDescription>Select the scanning technique to use for port detection</FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="hostDiscoveryProbes"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Host Discovery Probes</FormLabel>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                              <FormItem className="flex items-center space-x-3 space-y-0">
+                                <FormControl>
+                                  <Checkbox
+                                    checked={field.value?.includes("echo")}
+                                    onCheckedChange={(checked) => {
+                                      const current = field.value || []
+                                      if (checked) {
+                                        field.onChange([...current, "echo"])
+                                      } else {
+                                        field.onChange(current.filter((value) => value !== "echo"))
+                                      }
+                                    }}
+                                  />
+                                </FormControl>
+                                <FormLabel className="font-normal">ICMP Echo</FormLabel>
+                              </FormItem>
+                              <FormItem className="flex items-center space-x-3 space-y-0">
+                                <FormControl>
+                                  <Checkbox
+                                    checked={field.value?.includes("timestamp")}
+                                    onCheckedChange={(checked) => {
+                                      const current = field.value || []
+                                      if (checked) {
+                                        field.onChange([...current, "timestamp"])
+                                      } else {
+                                        field.onChange(current.filter((value) => value !== "timestamp"))
+                                      }
+                                    }}
+                                  />
+                                </FormControl>
+                                <FormLabel className="font-normal">ICMP Timestamp</FormLabel>
+                              </FormItem>
+                              <FormItem className="flex items-center space-x-3 space-y-0">
+                                <FormControl>
+                                  <Checkbox
+                                    checked={field.value?.includes("netmask")}
+                                    onCheckedChange={(checked) => {
+                                      const current = field.value || []
+                                      if (checked) {
+                                        field.onChange([...current, "netmask"])
+                                      } else {
+                                        field.onChange(current.filter((value) => value !== "netmask"))
+                                      }
+                                    }}
+                                  />
+                                </FormControl>
+                                <FormLabel className="font-normal">ICMP Netmask</FormLabel>
+                              </FormItem>
+                            </div>
+                            <FormDescription>Select the probes to use for host discovery</FormDescription>
+                          </FormItem>
+                        )}
+                      />
+
                       <FormField
                         control={form.control}
                         name="options"
@@ -327,18 +606,34 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                               <FormItem className="flex items-center space-x-3 space-y-0">
                                 <FormControl>
                                   <Checkbox
-                                    checked={field.value?.includes("script-scan")}
+                                    checked={field.value?.includes("ssl-scan")}
                                     onCheckedChange={(checked) => {
                                       const current = field.value || []
                                       if (checked) {
-                                        field.onChange([...current, "script-scan"])
+                                        field.onChange([...current, "ssl-scan"])
                                       } else {
-                                        field.onChange(current.filter((value) => value !== "script-scan"))
+                                        field.onChange(current.filter((value) => value !== "ssl-scan"))
                                       }
                                     }}
                                   />
                                 </FormControl>
-                                <FormLabel className="font-normal">Script Scan</FormLabel>
+                                <FormLabel className="font-normal">SSL/TLS Scan</FormLabel>
+                              </FormItem>
+                              <FormItem className="flex items-center space-x-3 space-y-0">
+                                <FormControl>
+                                  <Checkbox
+                                    checked={field.value?.includes("http-headers")}
+                                    onCheckedChange={(checked) => {
+                                      const current = field.value || []
+                                      if (checked) {
+                                        field.onChange([...current, "http-headers"])
+                                      } else {
+                                        field.onChange(current.filter((value) => value !== "http-headers"))
+                                      }
+                                    }}
+                                  />
+                                </FormControl>
+                                <FormLabel className="font-normal">HTTP Headers Scan</FormLabel>
                               </FormItem>
                               <FormItem className="flex items-center space-x-3 space-y-0">
                                 <FormControl>
@@ -375,42 +670,106 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                                 defaultValue={field.value}
                                 className="grid grid-cols-3 gap-2"
                               >
-                                <FormItem className="flex items-center space-x-2 space-y-0">
-                                  <FormControl>
-                                    <RadioGroupItem value="T0" />
-                                  </FormControl>
-                                  <FormLabel className="font-normal">T0 (Paranoid)</FormLabel>
-                                </FormItem>
-                                <FormItem className="flex items-center space-x-2 space-y-0">
-                                  <FormControl>
-                                    <RadioGroupItem value="T1" />
-                                  </FormControl>
-                                  <FormLabel className="font-normal">T1 (Sneaky)</FormLabel>
-                                </FormItem>
-                                <FormItem className="flex items-center space-x-2 space-y-0">
-                                  <FormControl>
-                                    <RadioGroupItem value="T2" />
-                                  </FormControl>
-                                  <FormLabel className="font-normal">T2 (Polite)</FormLabel>
-                                </FormItem>
-                                <FormItem className="flex items-center space-x-2 space-y-0">
-                                  <FormControl>
-                                    <RadioGroupItem value="T3" />
-                                  </FormControl>
-                                  <FormLabel className="font-normal">T3 (Normal)</FormLabel>
-                                </FormItem>
-                                <FormItem className="flex items-center space-x-2 space-y-0">
-                                  <FormControl>
-                                    <RadioGroupItem value="T4" />
-                                  </FormControl>
-                                  <FormLabel className="font-normal">T4 (Aggressive)</FormLabel>
-                                </FormItem>
-                                <FormItem className="flex items-center space-x-2 space-y-0">
-                                  <FormControl>
-                                    <RadioGroupItem value="T5" />
-                                  </FormControl>
-                                  <FormLabel className="font-normal">T5 (Insane)</FormLabel>
-                                </FormItem>
+                                <TooltipProvider>
+                                  <FormItem className="flex items-center space-x-2 space-y-0">
+                                    <FormControl>
+                                      <RadioGroupItem value="T0" />
+                                    </FormControl>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <FormLabel className="font-normal cursor-help">T0 (Paranoid)</FormLabel>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>
+                                          Very slow scan designed to avoid detection. Serializes all scans and waits up
+                                          to 5 minutes between probes.
+                                        </p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </FormItem>
+
+                                  <FormItem className="flex items-center space-x-2 space-y-0">
+                                    <FormControl>
+                                      <RadioGroupItem value="T1" />
+                                    </FormControl>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <FormLabel className="font-normal cursor-help">T1 (Sneaky)</FormLabel>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>
+                                          Slow scan that minimizes bandwidth usage and target impact. Waits 15 seconds
+                                          between probes.
+                                        </p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </FormItem>
+
+                                  <FormItem className="flex items-center space-x-2 space-y-0">
+                                    <FormControl>
+                                      <RadioGroupItem value="T2" />
+                                    </FormControl>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <FormLabel className="font-normal cursor-help">T2 (Polite)</FormLabel>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>
+                                          Slows down to consume less bandwidth and target resources. Waits 0.4 seconds
+                                          between probes.
+                                        </p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </FormItem>
+
+                                  <FormItem className="flex items-center space-x-2 space-y-0">
+                                    <FormControl>
+                                      <RadioGroupItem value="T3" />
+                                    </FormControl>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <FormLabel className="font-normal cursor-help">T3 (Normal)</FormLabel>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Default timing template with a balance between accuracy and speed.</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </FormItem>
+
+                                  <FormItem className="flex items-center space-x-2 space-y-0">
+                                    <FormControl>
+                                      <RadioGroupItem value="T4" />
+                                    </FormControl>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <FormLabel className="font-normal cursor-help">T4 (Aggressive)</FormLabel>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>
+                                          Faster scan that assumes a reasonably fast and reliable network. May overwhelm
+                                          slow hosts.
+                                        </p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </FormItem>
+
+                                  <FormItem className="flex items-center space-x-2 space-y-0">
+                                    <FormControl>
+                                      <RadioGroupItem value="T5" />
+                                    </FormControl>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <FormLabel className="font-normal cursor-help">T5 (Insane)</FormLabel>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>
+                                          Very aggressive scan that sacrifices accuracy for speed. Assumes an
+                                          extraordinarily fast network.
+                                        </p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </FormItem>
+                                </TooltipProvider>
                               </RadioGroup>
                             </FormControl>
                             <FormDescription>

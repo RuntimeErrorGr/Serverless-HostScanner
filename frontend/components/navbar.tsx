@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { LogOut } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 export function Navbar() {
   const { user, logout } = useAuth()
@@ -27,6 +28,7 @@ export function Navbar() {
           <h2 className="text-lg font-semibold md:hidden">Network Scanner</h2>
         </div>
         <div className="flex items-center gap-4">
+          <ThemeToggle />
           <div className="hidden md:block text-right mr-2">
             <p className="text-sm font-medium">{user?.name || "User"}</p>
             <p className="text-xs text-muted-foreground">{user?.email || ""}</p>

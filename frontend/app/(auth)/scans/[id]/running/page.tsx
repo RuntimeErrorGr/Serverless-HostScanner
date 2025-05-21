@@ -148,7 +148,7 @@ export default function PendingRunningScanPage() {
             <CardContent>
               <div
                 ref={outputRef}
-                className="bg-black text-green-400 font-mono text-sm p-4 rounded-md h-[400px] overflow-auto whitespace-pre-wrap"
+                className="bg-zinc-950 dark:bg-zinc-900 text-green-400 font-mono text-sm p-4 rounded-md h-[400px] overflow-auto whitespace-pre-wrap"
               >
                 {nmapOutput || "Waiting for output..."}
               </div>

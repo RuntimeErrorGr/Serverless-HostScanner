@@ -4,8 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { DataTable } from "@/components/data-table/data-table"
 import {
   Pagination,
   PaginationContent,
@@ -18,6 +17,7 @@ import { DeleteReportDialog } from "@/components/delete-report-dialog"
 import { MoreHorizontal, Trash2, Download, FileText } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
 import { Badge } from "@/components/ui/badge"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
 // Mock data for reports - can be empty for testing empty state
 const mockReports = Array.from({ length: 20 }).map((_, i) => ({
@@ -71,6 +71,75 @@ export default function ReportsPage() {
     setIsDeleteDialogOpen(false)
   }
 
+  const columns = [
+    {
+      key: "scanName",
+      title: "Scan",
+      sortable: true,
+      filterable: true,
+    },
+    {
+      key: "format",
+      title: "Format",
+      sortable: true,
+      filterable: true,
+      render: (row: any) => (
+        <Badge variant="outline" className="uppercase">
+          {row.format}
+        </Badge>
+      ),
+    },
+    {
+      key: "dateGenerated",
+      title: "Date Generated",
+      sortable: true,
+      filterable: true,
+      render: (row: any) => new Date(row.dateGenerated).toLocaleString(),
+    },
+    {
+      key: "lastDownloaded",
+      title: "Last Downloaded",
+      sortable: true,
+      filterable: true,
+      render: (row: any) => (row.lastDownloaded ? new Date(row.lastDownloaded).toLocaleString() : "Never"),
+    },
+    {
+      key: "actions",
+      title: "Actions",
+      render: (row: any) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="h-8 w-8 p-0" onClick={(e) => e.stopPropagation()}>
+              <span className="sr-only">Open menu</span>
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation()
+                handleDownloadReport(row)
+              }}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Download
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation()
+                handleDeleteReport(row)
+              }}
+              className="text-red-600"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete Report
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ]
+
   return (
     <div className="space-y-6 w-full">
       <div>
@@ -80,66 +149,21 @@ export default function ReportsPage() {
 
       <Card className="w-full">
         <CardContent className="p-0">
-          {reports.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Scan</TableHead>
-                  <TableHead>Format</TableHead>
-                  <TableHead>Date Generated</TableHead>
-                  <TableHead>Last Downloaded</TableHead>
-                  <TableHead className="w-[100px]">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {currentReports.map((report) => (
-                  <TableRow key={report.id} className="hover:bg-muted/50">
-                    <TableCell className="cursor-pointer" onClick={() => handleScanClick(report)}>
-                      {report.scanName}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="uppercase">
-                        {report.format}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{new Date(report.dateGenerated).toLocaleString()}</TableCell>
-                    <TableCell>
-                      {report.lastDownloaded ? new Date(report.lastDownloaded).toLocaleString() : "Never"}
-                    </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0">
-                            <span className="sr-only">Open menu</span>
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleDownloadReport(report)}>
-                            <Download className="mr-2 h-4 w-4" />
-                            Download
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleDeleteReport(report)} className="text-red-600">
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete Report
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-              <FileText className="h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium">No reports found</h3>
-              <p className="text-muted-foreground mt-2 mb-6">
-                You haven't generated any reports yet. Complete a scan and generate a report to see it here.
-              </p>
-              <Button onClick={() => router.push("/scans")}>Go to Scans</Button>
-            </div>
-          )}
+          <DataTable
+            data={currentReports}
+            columns={columns}
+            onRowClick={handleScanClick}
+            emptyState={
+              <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+                <FileText className="h-12 w-12 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-medium">No reports found</h3>
+                <p className="text-muted-foreground mt-2 mb-6">
+                  You haven't generated any reports yet. Complete a scan and generate a report to see it here.
+                </p>
+                <Button onClick={() => router.push("/scans")}>Go to Scans</Button>
+              </div>
+            }
+          />
         </CardContent>
       </Card>
 

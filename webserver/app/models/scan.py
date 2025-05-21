@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, ForeignKey, Text, JSON, DateTime, Table
+from sqlalchemy import Column, String, Integer, ForeignKey, JSON, DateTime, Table
 from sqlalchemy.orm import relationship
 from sqlalchemy import Enum as SqlEnum
 from sqlalchemy.dialects.mysql import LONGTEXT
@@ -33,7 +33,6 @@ class Scan(Base):
     type = Column(SqlEnum(ScanType, name="scan_type"), default=ScanType.DEFAULT)
     output = Column(LONGTEXT)
     parameters = Column(JSON)
-    result = Column(JSON)
     created_at = Column(DateTime, default=datetime.now)
     started_at = Column(DateTime)
     finished_at = Column(DateTime)
@@ -41,6 +40,7 @@ class Scan(Base):
 
     user_id = Column(Integer, ForeignKey('users.id'))
     user = relationship("User", back_populates="scans")
+    reports = relationship("Report", back_populates="scan", cascade="all, delete-orphan")
 
     targets = relationship(
         "Target",
@@ -49,4 +49,4 @@ class Scan(Base):
     )
 
     def __repr__(self):
-        return f"<Scan(id={self.id}, status={self.status}, output={self.output}, result={self.result}, parameters={self.parameters})>"
+        return f"<Scan(id={self.id}, status={self.status}, output={self.output}, parameters={self.parameters})"

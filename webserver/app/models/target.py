@@ -3,6 +3,7 @@ from sqlalchemy.orm import relationship
 from app.database.base_class import Base
 from datetime import datetime
 from app.models.scan import scan_target_association
+
 class Target(Base):
     __tablename__ = 'targets'
 
@@ -13,6 +14,7 @@ class Target(Base):
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
     user = relationship("User", back_populates="targets")
+    findings = relationship("Finding", back_populates="target", cascade="all, delete-orphan")
     scans = relationship(
         "Scan",
         secondary=scan_target_association,

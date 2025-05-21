@@ -3,6 +3,8 @@
 
 # Get the pod name for the webserver
 POD_NAME := $(shell kubectl get pods -l app=webserver -o jsonpath="{.items[0].metadata.name}")
+REGISTRY := "andrei8080"
+VERSION := "latest"
 
 # Common function to execute alembic commands in k8s
 define exec_alembic
@@ -13,6 +15,18 @@ define exec_alembic
 	fi
 	@echo "Using pod: $(POD_NAME)"
 	@kubectl exec $(POD_NAME) -- $(1)
+endef
+
+# Function to build the webserver image and push it to the registry
+define deploy_webserver
+	sudo docker build --target production -t $(REGISTRY)/webserver:$(VERSION) .
+	sudo docker push $(REGISTRY)/webserver:$(VERSION)
+	kubectl rollout restart -n default deployment webserver
+	kubectl rollout restart -n default deployment celery-worker
+	# wait for the new pod to be ready
+	@echo "Waiting for the new pod to be ready..."
+	@kubectl wait --for=condition=ready pod -l app=webserver -n default --timeout=300s
+	@echo "New pod is ready!"
 endef
 
 # Development environment commands

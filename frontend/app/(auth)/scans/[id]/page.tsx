@@ -187,7 +187,7 @@ export default function FinishedScanPage() {
               <CardTitle>Nmap Output</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="bg-black text-green-400 font-mono text-sm p-4 rounded-md h-[400px] overflow-auto whitespace-pre-wrap">
+              <div className="bg-zinc-950 dark:bg-zinc-900 text-green-400 font-mono text-sm p-4 rounded-md h-[400px] overflow-auto whitespace-pre-wrap">
                 {scan.nmapOutput || (
                   <div className="flex items-center justify-center h-full text-muted-foreground">
                     <div className="text-center">

@@ -10,6 +10,7 @@ import certifi
 import requests
 import os
 import more_itertools
+import subprocess
 
 
 def read_ports_file(filename: str) -> str:
@@ -130,12 +131,7 @@ class DefaultValues:
     Class that holds the scan type default configuration values for the check alive process.
     """
 
-    SCAN_DELAY = 10
-    RTT_TIMEOUT = 500
-    RETRIES = 2
     REQUEST_TIMEOUT = 10
-    MIN_RATE = 1000
-    IP_PROTOCOLS = {"icmp": 1, "igmp": 2, "ip_in_ip": 4, "tcp": 6, "sctp": 132}
 
 
 class ScanType(Enum):
@@ -144,6 +140,7 @@ class ScanType(Enum):
     """
 
     DEFAULT = "default"
+    DEEP = "deep"
     CUSTOM = "custom"
 
     def __str__(self):
@@ -162,14 +159,7 @@ class CheckTargetsOptions:
         echo_request: bool = False,
         timestamp_request: bool = False,
         address_mask_request: bool = False,
-        ip_protocols_ping: str | None = None,
-        tcp_ack_ping_ports: str | None = None,
-        tcp_syn_ping_ports: str | None = None,
-        udp_ping_ports: str | None = None,
-        max_retries: int | None = None,
-        max_rtt_timeout: int | None = None,
-        max_scan_delay: int | None = None,
-        min_rate: int | None = None,
+        timing_flag: str | None = None,
         os_detection: bool = False,
         service_version: bool = False,
         aggressive: bool = False,
@@ -180,7 +170,6 @@ class CheckTargetsOptions:
         udp_ports: str | None = None,
         tcp_syn_scan: bool = False,
         tcp_ack_scan: bool = False,
-        ip_protocol_scan: bool = False,
         tcp_connect_scan: bool = False,
         tcp_window_scan: bool = False,
         tcp_null_scan: bool  = False,
@@ -190,14 +179,7 @@ class CheckTargetsOptions:
         self.echo_request = echo_request
         self.timestamp_request = timestamp_request
         self.address_mask_request = address_mask_request
-        self.ip_protocols_ping = ip_protocols_ping
-        self.tcp_ack_ping_ports = tcp_ack_ping_ports
-        self.tcp_syn_ping_ports = tcp_syn_ping_ports
-        self.udp_ping_ports = udp_ping_ports
-        self.max_retries = max_retries
-        self.max_rtt_timeout = max_rtt_timeout
-        self.max_scan_delay = max_scan_delay
-        self.min_rate = min_rate
+        self.timing_flag = timing_flag
         self.os_detection = os_detection
         self.service_version = service_version
         self.aggressive = aggressive
@@ -208,7 +190,6 @@ class CheckTargetsOptions:
         self.udp_ports = udp_ports
         self.tcp_syn_scan = tcp_syn_scan
         self.tcp_ack_scan = tcp_ack_scan
-        self.ip_protocol_scan = ip_protocol_scan
         self.tcp_connect_scan = tcp_connect_scan
         self.tcp_window_scan = tcp_window_scan
         self.tcp_null_scan = tcp_null_scan
@@ -228,33 +209,7 @@ class CheckTargetsOptions:
 
         def get_address_mask_request_flag() -> str:
             return "-PM" if self.address_mask_request else ""
-
-        def get_ip_protocol_ping_flag() -> str:
-            return f"-PO{self.ip_protocols_ping}" if self.ip_protocols_ping else ""
-
-        def get_tcp_ack_ping_ports_flag() -> str:
-            return f"-PA{self.tcp_ack_ping_ports}" if self.tcp_ack_ping_ports else ""
-
-        def get_tcp_syn_ping_ports_flag() -> str:
-            return f"-PS{self.tcp_syn_ping_ports}" if self.tcp_syn_ping_ports else ""
-
-        def get_udp_ping_ports_flag() -> str:
-            return f"-PU{self.udp_ping_ports}" if self.udp_ping_ports else ""
-
-        def get_max_retries_flag() -> str:
-            return f"--max-retries {self.max_retries}" if self.max_retries else ""
-
-        def get_max_rtt_timeout_flag() -> str:
-            return f"--max-rtt-timeout {self.max_rtt_timeout}ms" if self.max_rtt_timeout else ""
-
-        def get_max_scan_delay_flag() -> str:
-            return f"--max-scan-delay {self.max_scan_delay}ms" if self.max_scan_delay else ""
-
-        def get_min_rate_flag() -> str:
-            if self.min_rate and self.min_rate > self.MAX_RATE:
-                return f"--min-rate {self.MAX_RATE}"
-            return f"--min-rate {self.min_rate}" if self.min_rate else ""
-
+        
         def get_os_detection_flag() -> str:
             return "-O" if self.os_detection else ""
 
@@ -290,21 +245,38 @@ class CheckTargetsOptions:
             elif self.tcp_connect_scan:
                 return "-sT"
             return ""
-
-        def get_ip_protocol_scan_flag() -> str:
-            return "-sO" if self.ip_protocol_scan else ""
+        
+        def get_timing_flag() -> str:
+            return f"-T{self.timing_flag}" if self.timing_flag else ""
 
         def get_port_flags() -> tuple[str, str, str]:
             parts = []
             udp_scan_needed = False
             version_intensity = ""
+            
             if self.tcp_ports:
-                parts.append(f"T:{self.tcp_ports}")
+                port_type, n = parse_top_ports_format(self.tcp_ports)
+                if port_type == "top":
+                    tcp_ports = get_top_ports("tcp", n)
+                    if tcp_ports:
+                        parts.append(f"T:{tcp_ports}")
+                else:
+                    parts.append(f"T:{self.tcp_ports}")
+            
             if self.udp_ports:
-                parts.append(f"U:{self.udp_ports}")
-                udp_scan_needed = True
-                if self.service_version:
-                    version_intensity = "--version-intensity=0"
+                port_type, n = parse_top_ports_format(self.udp_ports)
+                if port_type == "top":
+                    udp_ports = get_top_ports("udp", n)
+                    if udp_ports:
+                        parts.append(f"U:{udp_ports}")
+                        udp_scan_needed = True
+                else:
+                    parts.append(f"U:{self.udp_ports}")
+                    udp_scan_needed = True
+            
+            if udp_scan_needed and self.service_version:
+                version_intensity = "--version-intensity=0"
+            
             if parts:
                 return f"-p {','.join(parts)}", "-sU" if udp_scan_needed else "", version_intensity
             return "", "", ""
@@ -316,22 +288,14 @@ class CheckTargetsOptions:
                     get_echo_request_flag(),
                     get_timestamp_request_flag(),
                     get_address_mask_request_flag(),
-                    get_ip_protocol_ping_flag().split(),
-                    get_tcp_ack_ping_ports_flag().split(),
-                    get_tcp_syn_ping_ports_flag().split(),
-                    get_udp_ping_ports_flag().split(),
-                    get_max_retries_flag().split(),
-                    get_max_rtt_timeout_flag().split(),
-                    get_max_scan_delay_flag().split(),
-                    get_min_rate_flag().split(),
                     get_os_detection_flag().split(),
                     get_service_version_flag().split(),
                     get_aggressive_flag().split(),
                     get_traceroute_flag().split(),
+                    get_timing_flag().split(),
                     get_ssl_scan_flag().split(),
                     get_http_headers_flag().split(),
                     get_tcp_scan_flag().split(),
-                    get_ip_protocol_scan_flag().split(),
                     *get_port_flags(),
                 ],
             )
@@ -344,14 +308,6 @@ class CheckTargetsOptions:
                 "echo_request": self.echo_request,
                 "timestamp_request": self.timestamp_request,
                 "address_mask_request": self.address_mask_request,
-                "ip_protocol_ping": self.ip_protocols_ping,
-                "tcp_ack_ping_ports": self.tcp_ack_ping_ports,
-                "tcp_syn_ping_ports": self.tcp_syn_ping_ports,
-                "udp_ping_ports": self.udp_ping_ports,
-                "max_retries": self.max_retries,
-                "max_rtt_timeout": self.max_rtt_timeout,
-                "max_scan_delay": self.max_scan_delay,
-                "min_rate": self.min_rate,
                 "os_detection": self.os_detection,
                 "service_version": self.service_version,
                 "aggressive": self.aggressive,
@@ -360,9 +316,9 @@ class CheckTargetsOptions:
                 "http_headers": self.http_headers,
                 "tcp_ports": self.tcp_ports,
                 "udp_ports": self.udp_ports,
+                "timing_flag": self.timing_flag,
                 "tcp_syn_scan": self.tcp_syn_scan,
                 "tcp_ack_scan": self.tcp_ack_scan,
-                "ip_protocol_scan": self.ip_protocol_scan,
                 "tcp_connect_scan": self.tcp_connect_scan,
                 "tcp_window_scan": self.tcp_window_scan,
                 "tcp_null_scan": self.tcp_null_scan,
@@ -373,21 +329,29 @@ class CheckTargetsOptions:
 
     @staticmethod
     def get_default_check_targets_options():
-        tcp_ack_ping_ports = tcp_syn_ping_ports = read_ports_file(os.path.join(os.path.dirname(__file__), "100-tcp.txt"))
-        udp_ping_ports = read_ports_file(os.path.join(os.path.dirname(__file__), "100-udp.txt"))
+        tcp_ack_ping_ports = read_ports_file(os.path.join(os.path.dirname(__file__), "100-tcp.txt"))
+        return CheckTargetsOptions(
+            echo_request=True,
+            tcp_ports=tcp_ack_ping_ports,
+            tcp_syn_scan=True,
+            timing_flag=5,
+        )
+    
+    @staticmethod
+    def get_deep_check_targets_options():
         return CheckTargetsOptions(
             echo_request=True,
             timestamp_request=True,
             address_mask_request=True,
-            ip_protocols_ping=",".join(map(str, DefaultValues.IP_PROTOCOLS.values())),
-            tcp_ack_ping_ports=tcp_ack_ping_ports,
-            tcp_syn_ping_ports=tcp_syn_ping_ports,
-            udp_ping_ports=udp_ping_ports,
-            tcp_ports=tcp_ack_ping_ports,
+            os_detection=True,
+            service_version=True,
+            traceroute=True,
+            ssl_scan=True,
+            http_headers=True,
             tcp_syn_scan=True,
-            max_retries=DefaultValues.RETRIES,
-            max_rtt_timeout=DefaultValues.RTT_TIMEOUT,
-            max_scan_delay=DefaultValues.SCAN_DELAY,
+            timing_flag=3,
+            tcp_ports="top-5000",
+            udp_ports="top-100"
         )
 
 
@@ -431,6 +395,7 @@ class CheckTargetsConfig:
         self.scan_options = scan_options
         self.output_file = tempfile.NamedTemporaryFile(suffix=".xml", mode="w+t")
         self.scan_id = scan_id
+
     def get_cmd(self) -> list[str]:
         """Returns the Nmap command to be executed."""
         return list(
@@ -438,8 +403,10 @@ class CheckTargetsConfig:
                 [
                     "nmap",
                     "-n",
-                    "-v",
                     "--reason",
+                    "-PS21,22,23,25,53,80,110,143,443,3306,3343,3389,5060,5900,6379,8080,9443",
+                    "-PU53,67,123",
+                    "-PA21,22,80,443,445,3389,3306",
                     "--source-port",
                     str(self.SOURCE_PORT),
                     "--stats-every",
@@ -586,3 +553,41 @@ class CheckTargetsConfig:
         except Exception as exc:
             raise NmapParseException(f"Could not parse Nmap tree: {exc}") from exc
         return nmap_results
+
+
+def get_top_ports(port_type: str, top_n: int) -> str:
+    """
+    Get top N ports by running list_nmap_top_ports.sh script.
+    Args:
+        port_type: Either 'tcp' or 'udp'
+        top_n: Number of top ports to get
+    Returns:
+        String containing comma-separated ports
+    """
+    try:
+        script_path = os.path.join(os.path.dirname(__file__), "list_nmap_top_ports.sh")
+        result = subprocess.run(
+            ["bash", script_path, port_type.upper(), str(top_n)],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return result.stdout.strip()
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Error running list_nmap_top_ports.sh: {e}")
+        return ""
+    except Exception as e:
+        logging.error(f"Unexpected error getting top ports: {e}")
+        return ""
+
+
+def parse_top_ports_format(port_spec: str) -> tuple[str, int]:
+    """Parse port specification in format "top-N" (e.g., top-100, top-1000)"""
+    if not port_spec.startswith("top-"):
+        return port_spec, 0
+        
+    try:
+        n = int(port_spec.split("-")[1])
+        return "top", n
+    except (ValueError, IndexError):
+        return port_spec, 0

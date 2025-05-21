@@ -15,7 +15,6 @@ class ScanBase(BaseModel):
     parameters: Dict[str, Any]
     status: Optional[str] = None
     output: Optional[str] = None
-    result: Optional[Dict[str, Any]] = None
 
 
 class ScanInDB(ScanBase):

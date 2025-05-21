@@ -52,23 +52,10 @@ def handle(event, _):
                 sys.argv.append('--timestamp-request')
             if scan_options.get('address_mask_request'):
                 sys.argv.append('--address-mask-request')
-            if scan_options.get('ip_protocols_ping'):
-                sys.argv.extend(['--ip-protocols-ping', scan_options['ip_protocols_ping']])
-            if scan_options.get('tcp_ack_ping_ports'):
-                sys.argv.extend(['--tcp-ack-ping-ports', scan_options['tcp_ack_ping_ports']])
-            if scan_options.get('tcp_syn_ping_ports'):
-                sys.argv.extend(['--tcp-syn-ping-ports', scan_options['tcp_syn_ping_ports']])
-            if scan_options.get('udp_ping_ports'):
-                sys.argv.extend(['--udp-ping-ports', scan_options['udp_ping_ports']])
-            if scan_options.get('max_retries'):
-                sys.argv.extend(['--max-retries', str(scan_options['max_retries'])])
-            if scan_options.get('max_rtt_timeout'):
-                sys.argv.extend(['--max-rtt-timeout', str(scan_options['max_rtt_timeout'])])
-            if scan_options.get('max_scan_delay'):
-                sys.argv.extend(['--max-scan-delay', str(scan_options['max_scan_delay'])])
-            if scan_options.get('min_rate'):
-                sys.argv.extend(['--min-rate', str(scan_options['min_rate'])])
 
+            if scan_options.get('timing_flag'):
+                sys.argv.append('--timing-flag')
+                sys.argv.append(int(scan_options['timing_flag']))
             if scan_options.get('os_detection'):
                 sys.argv.append('--os-detection')
             if scan_options.get('service_version'):
@@ -83,22 +70,22 @@ def handle(event, _):
                 sys.argv.append('--http-headers')
 
 
+            if scan_options.get('tcp_ports'):
+                sys.argv.extend(['--tcp-ports', scan_options['tcp_ports']])
+            if scan_options.get('udp_ports'):
+                sys.argv.extend(['--udp-ports', scan_options['udp_ports']])
+
             if scan_options.get('tcp_null_scan'):
                 sys.argv.append('--tcp-null-scan')
             if scan_options.get('tcp_fin_scan'):
                 sys.argv.append('--tcp-fin-scan')
             if scan_options.get('tcp_xmas_scan'):
                 sys.argv.append('--tcp-xmas-scan')
-            if scan_options.get('tcp_ports'):
-                sys.argv.extend(['--tcp-ports', scan_options['tcp_ports']])
-            if scan_options.get('udp_ports'):
-                sys.argv.extend(['--udp-ports', scan_options['udp_ports']])
+
             if scan_options.get('tcp_syn_scan'):
                 sys.argv.append('--tcp-syn-scan')
             if scan_options.get('tcp_ack_scan'):
                 sys.argv.append('--tcp-ack-scan')
-            if scan_options.get('ip_protocol_scan'):
-                sys.argv.append('--ip-protocol-scan')
             if scan_options.get('tcp_connect_scan'):
                 sys.argv.append('--tcp-connect-scan')
             if scan_options.get('tcp_window_scan'):
@@ -113,19 +100,13 @@ def handle(event, _):
         logging.debug(f"Scan type: {scan_type}")
         if scan_type == ScanType.DEFAULT:
             scan_options = CheckTargetsOptions.get_default_check_targets_options()
+        elif scan_type == ScanType.DEEP:
+            scan_options = CheckTargetsOptions.get_deep_check_targets_options()
         else:
             scan_options = CheckTargetsOptions(
                 echo_request=args.echo_request,
                 timestamp_request=args.timestamp_request,
                 address_mask_request=args.address_mask_request,
-                ip_protocols_ping=args.ip_protocols_ping,
-                tcp_ack_ping_ports=args.tcp_ack_ping_ports,
-                tcp_syn_ping_ports=args.tcp_syn_ping_ports,
-                udp_ping_ports=args.udp_ping_ports,
-                max_retries=args.max_retries,
-                max_rtt_timeout=args.max_rtt_timeout,
-                max_scan_delay=args.max_scan_delay,
-                min_rate=args.min_rate,
                 os_detection=args.os_detection,
                 service_version=args.service_version,
                 aggressive=args.aggressive,
@@ -134,14 +115,13 @@ def handle(event, _):
                 http_headers=args.http_headers,
                 tcp_syn_scan=args.tcp_syn_scan,
                 tcp_ack_scan=args.tcp_ack_scan,
-                ip_protocol_scan=args.ip_protocol_scan,
                 tcp_connect_scan=args.tcp_connect_scan,
                 tcp_window_scan=args.tcp_window_scan,
-                tcp_ports=args.tcp_ports,
-                udp_ports=args.udp_ports,
                 tcp_null_scan=args.tcp_null_scan,
                 tcp_fin_scan=args.tcp_fin_scan,
-                tcp_xmas_scan=args.tcp_xmas_scan
+                tcp_xmas_scan=args.tcp_xmas_scan,
+                tcp_ports=args.tcp_ports,
+                udp_ports=args.udp_ports,
             )
 
         config = CheckTargetsConfig(targets, scan_options, scan_id)

@@ -46,6 +46,34 @@ class CheckTargets:
         self.alive_targets: set[str] = set()
 
 
+    def parse_nmap_progress(self, line: str) -> float | None:
+        """Parse progress percentage from Nmap output line."""
+        if "% done" not in line or "ETC:" not in line:
+            return None
+        try:
+            # Extract percentage from line like "SYN Stealth Scan Timing: About 86.51% done"
+            percentage = float(line.split("%")[0].split("About ")[-1].strip())
+            return percentage
+        except (ValueError, IndexError):
+            return None
+
+    def __process_scan_output(self, line: str, seen_lines: set) -> None:
+        """Process a single line of scan output."""
+        if not line or line in seen_lines:
+            return
+        
+        # Skip common noise
+        if "Read data files from" in line or "ETC:" in line:
+            return
+        
+        seen_lines.add(line)
+        self.redis_client.publish(self.config.scan_id, line)
+        
+        # Check for progress information and publish to separate channel
+        progress = self.parse_nmap_progress(line)
+        if progress is not None:
+            self.redis_client.publish(f"{self.config.scan_id}:progress", str(progress))
+
     def __check_alive(self) -> None:
         """
         Runs the Nmap command to check which targets are alive.
@@ -78,17 +106,11 @@ class CheckTargets:
                 self.redis_client.publish(self.config.scan_id, starting_message)
                 seen_lines.add(starting_message)
 
-                # Read output line by line, send to Redis, and send heartbeat if needed
                 while True:
                     line = process.stdout.readline()
                     if line:
                         line = line.strip()
-                        # Skip empty lines and already seen content
-                        if not line or line in seen_lines or "Read data files from" in line:
-                            continue
-                        
-                        seen_lines.add(line)
-                        self.redis_client.publish(self.config.scan_id, line)
+                        self.__process_scan_output(line, seen_lines)
                         last_output_time = time.time()
                     else:
                         # No new output, check if process is still running
@@ -107,7 +129,7 @@ class CheckTargets:
 
                 if return_code != 0:
                     self.status = "failed"
-                    error_msg = f"Scan failed with return code {return_code}"
+                    error_msg = "Scan failed. Please check the scan results for more details."
                     self.redis_client.publish(self.config.scan_id, error_msg)
                     self.redis_client.set(f"scan:{self.config.scan_id}", json.dumps({"status": self.status}))
                     raise CheckTargetsException(f"Nmap process error: return code {return_code}")
@@ -266,16 +288,9 @@ def parse_cli_arguments():
     parser.add_argument("--echo-request", help="Perform echo request.", action="store_true")
     parser.add_argument("--timestamp-request", help="Perform timestamp request.", action="store_true")
     parser.add_argument("--address-mask-request", help="Perform address mask request.", action="store_true")
-    parser.add_argument("--ip-protocols-ping", help="Protocols for IP protocol ping.")
-    parser.add_argument("--tcp-ack-ping-ports", help="Ports for TCP ACK ping.")
-    parser.add_argument("--tcp-syn-ping-ports", help="Ports for TCP SYN ping.")
-    parser.add_argument("--udp-ping-ports", help="Ports for UDP ping.")
-    parser.add_argument("--max-retries", type=int, help="Max retries for a probe.")
-    parser.add_argument("--max-rtt-timeout", type=int, help="Max retransmision timeout for a probe.")
-    parser.add_argument("--max-scan-delay", type=int, help="Max scan delay.")
-    parser.add_argument("--min-rate", type=int, help="Min number of transmitted packets per second.")
     
     # New scan options
+    parser.add_argument("--timing-flag", help="Timing flag", type=int, default=3)
     parser.add_argument("--os-detection", help="Enable OS detection", action="store_true")
     parser.add_argument("--service-version", help="Enable service/version detection", action="store_true")
     parser.add_argument("--aggressive", help="Enable aggressive scan mode", action="store_true")
@@ -283,17 +298,15 @@ def parse_cli_arguments():
     parser.add_argument("--ssl-scan", help="Enable SSL scan", action="store_true")
     parser.add_argument("--http-headers", help="Enable HTTP headers", action="store_true")
 
-    parser.add_argument("--tcp-null-scan", help="Enable TCP null scan", action="store_true")
-    parser.add_argument("--tcp-fin-scan", help="Enable TCP FIN scan", action="store_true")
-    parser.add_argument("--tcp-xmas-scan", help="Enable TCP XMAS scan", action="store_true")
-    
+
     # Port list arguments for scan types
     parser.add_argument("--tcp-syn-scan", help="Enable TCP SYN scan", action="store_true")
     parser.add_argument("--tcp-ack-scan", help="Enable TCP ACK scan", action="store_true")
-    parser.add_argument("--udp-scan", help="Enable UDP scan", action="store_true")
-    parser.add_argument("--ip-protocol-scan", help="Enable IP protocol scan", action="store_true")
     parser.add_argument("--tcp-connect-scan", help="Enable TCP connect scan", action="store_true")
     parser.add_argument("--tcp-window-scan", help="Enable TCP window scan", action="store_true")
+    parser.add_argument("--tcp-null-scan", help="Enable TCP null scan", action="store_true")
+    parser.add_argument("--tcp-fin-scan", help="Enable TCP FIN scan", action="store_true")
+    parser.add_argument("--tcp-xmas-scan", help="Enable TCP XMAS scan", action="store_true")
     parser.add_argument("--tcp-ports", help="TCP ports to scan")
     parser.add_argument("--udp-ports", help="UDP ports to scan")
 

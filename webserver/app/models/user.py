@@ -15,8 +15,8 @@ class User(Base):
     email_verified = Column(Boolean, default=False)
 
     email = Column(String(255))
-    scans = relationship("Scan", back_populates="user")
-    targets = relationship("Target", back_populates="user")
+    scans = relationship("Scan", back_populates="user", cascade="all, delete-orphan")
+    targets = relationship("Target", back_populates="user", cascade="all, delete-orphan")
 
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)

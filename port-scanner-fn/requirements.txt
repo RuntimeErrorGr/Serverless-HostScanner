@@ -7,4 +7,3 @@ redis==5.0.7
 more-itertools==10.3.0
 python-dotenv==1.0.1
 certifi==2025.1.31
-redis==5.0.7

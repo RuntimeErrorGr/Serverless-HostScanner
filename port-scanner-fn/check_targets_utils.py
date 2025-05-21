@@ -159,7 +159,7 @@ class CheckTargetsOptions:
         echo_request: bool = False,
         timestamp_request: bool = False,
         address_mask_request: bool = False,
-        timing_flag: str | None = None,
+        timing_flag: str | int | None = None,
         os_detection: bool = False,
         service_version: bool = False,
         aggressive: bool = False,
@@ -247,7 +247,7 @@ class CheckTargetsOptions:
             return ""
         
         def get_timing_flag() -> str:
-            return f"-T{self.timing_flag}" if self.timing_flag else ""
+            return f"-T{self.timing_flag}" if self.timing_flag is not None else ""
 
         def get_port_flags() -> tuple[str, str, str]:
             parts = []

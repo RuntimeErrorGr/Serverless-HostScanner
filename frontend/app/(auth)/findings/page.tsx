@@ -73,6 +73,7 @@ export default function FindingsPage() {
   const confirmDeleteFinding = () => {
     // API call would go here
     toast({
+      variant: "success",
       title: "Finding deleted",
       description: `Finding for ${selectedFinding.target_name} has been deleted.`,
     })

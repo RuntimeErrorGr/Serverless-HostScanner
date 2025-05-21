@@ -55,7 +55,7 @@ def handle(event, _):
 
             if scan_options.get('timing_flag'):
                 sys.argv.append('--timing-flag')
-                sys.argv.append(int(scan_options['timing_flag']))
+                sys.argv.append(str(scan_options['timing_flag']))
             if scan_options.get('os_detection'):
                 sys.argv.append('--os-detection')
             if scan_options.get('service_version'):
@@ -68,7 +68,6 @@ def handle(event, _):
                 sys.argv.append('--ssl-scan')
             if scan_options.get('http_headers'):
                 sys.argv.append('--http-headers')
-
 
             if scan_options.get('tcp_ports'):
                 sys.argv.extend(['--tcp-ports', scan_options['tcp_ports']])

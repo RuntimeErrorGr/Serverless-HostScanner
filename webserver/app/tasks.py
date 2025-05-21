@@ -93,7 +93,6 @@ def watch_scan(scan_uuid):
             if scan_results_data:
                 try:
                     scan_results = json.loads(scan_results_data)
-                    scan.result = scan_results
                     db.commit()
                     log.info(f"Updated scan {scan_uuid} results from Redis")
                 except json.JSONDecodeError:

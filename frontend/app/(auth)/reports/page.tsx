@@ -57,6 +57,7 @@ export default function ReportsPage() {
   const handleDownloadReport = (report: any) => {
     // In a real app, this would trigger a download
     toast({
+      variant: "success",
       title: "Report downloaded",
       description: `${report.format.toUpperCase()} report for ${report.scanName} has been downloaded.`,
     })
@@ -65,6 +66,7 @@ export default function ReportsPage() {
   const confirmDeleteReport = () => {
     // API call would go here
     toast({
+      variant: "success",
       title: "Report deleted",
       description: `Report for ${selectedReport.scanName} has been deleted.`,
     })

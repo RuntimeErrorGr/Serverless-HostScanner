@@ -20,10 +20,35 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { cn } from "@/lib/utils"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import * as z from "zod"
 import { Upload, X } from "lucide-react"
+
+// Port validation regex
+const portRangeRegex = /^(?:\d{1,5}(?:-\d{1,5})?)?(?:,\d{1,5}(?:-\d{1,5})?)*$/;
+const isValidPortRange = (value: string) => {
+  if (!value) return true;
+  if (!portRangeRegex.test(value)) return false;
+  
+  // Check that all ports are within valid range (1-65535)
+  const segments = value.split(',');
+  return segments.every(segment => {
+    if (segment.includes('-')) {
+      const [start, end] = segment.split('-').map(Number);
+      return start >= 1 && start <= 65535 && end >= 1 && end <= 65535 && start <= end;
+    } else {
+      const port = Number(segment);
+      return port >= 1 && port <= 65535;
+    }
+  });
+};
+
+// Custom error message for port validation
+const getPortValidationError = () => {
+  return "Ports must be comma-separated numbers or ranges (e.g., 80,443,1000-2000) between 1-65535";
+};
 
 // Validation schema for the form
 const formSchema = z.object({
@@ -31,16 +56,38 @@ const formSchema = z.object({
     message: "At least one target is required.",
   }),
   scanType: z.enum(["default", "deep", "custom"]),
-  portTypes: z.array(z.string()).optional(),
-  tcpPorts: z.string().optional(),
-  udpPorts: z.string().optional(),
+  portTypes: z.array(z.string()).min(1, {
+    message: "At least one port type must be selected."
+  }),
+  tcpPorts: z.string().optional()
+    .refine(val => !val || isValidPortRange(val), { message: getPortValidationError() }),
+  udpPorts: z.string().optional()
+    .refine(val => !val || isValidPortRange(val), { message: getPortValidationError() }),
   tcpTopPorts: z.string().optional(),
   udpTopPorts: z.string().optional(),
   detectionTechnique: z.string().optional(),
   hostDiscoveryProbes: z.array(z.string()).optional(),
   options: z.array(z.string()).optional(),
   timing: z.string().optional(),
-})
+}).refine((data) => {
+  // Validate that if TCP is selected, either tcpPorts or tcpTopPorts is specified
+  if (data.portTypes.includes('tcp') && data.scanType === 'custom') {
+    return !!data.tcpPorts || !!data.tcpTopPorts;
+  }
+  return true;
+}, {
+  message: "TCP ports must be specified when TCP is selected",
+  path: ["tcpPorts"]
+}).refine((data) => {
+  // Validate that if UDP is selected, either udpPorts or udpTopPorts is specified
+  if (data.portTypes.includes('udp') && data.scanType === 'custom') {
+    return !!data.udpPorts || !!data.udpTopPorts;
+  }
+  return true;
+}, {
+  message: "UDP ports must be specified when UDP is selected",
+  path: ["udpPorts"]
+});
 
 type ScanFormValues = z.infer<typeof formSchema>
 
@@ -56,7 +103,7 @@ const defaultValues: Partial<ScanFormValues> = {
   detectionTechnique: "syn",
   hostDiscoveryProbes: [],
   options: [],
-  timing: "T3",
+  timing: "T4",
 }
 
 interface StartScanModalProps {
@@ -70,23 +117,42 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [tcpInputDisabled, setTcpInputDisabled] = useState(false)
   const [udpInputDisabled, setUdpInputDisabled] = useState(false)
+  // Add state for protocol selection
+  const [tcpDisabled, setTcpDisabled] = useState(false)
+  const [udpDisabled, setUdpDisabled] = useState(false)
 
   const form = useForm<ScanFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues,
   })
 
-  // Watch for changes in port inputs
+  // Watch for changes in port inputs and port types
   const tcpPorts = form.watch("tcpPorts")
   const udpPorts = form.watch("udpPorts")
   const tcpTopPorts = form.watch("tcpTopPorts")
   const udpTopPorts = form.watch("udpTopPorts")
+  const portTypes = form.watch("portTypes")
+  const scanType = form.watch("scanType")
 
   // Update disabled states based on input values
   useEffect(() => {
     setTcpInputDisabled(!!tcpTopPorts)
     setUdpInputDisabled(!!udpTopPorts)
-  }, [tcpTopPorts, udpTopPorts])
+    
+    // Update protocol disabled states to ensure at least one is selected
+    setTcpDisabled(portTypes.includes('udp') && !portTypes.includes('tcp') ? false : portTypes.length <= 1)
+    setUdpDisabled(portTypes.includes('tcp') && !portTypes.includes('udp') ? false : portTypes.length <= 1)
+  }, [tcpTopPorts, udpTopPorts, portTypes])
+
+  // Update protocol section visibility based on scan type
+  useEffect(() => {
+    if (scanType !== 'custom') {
+      // If not custom scan, ensure at least TCP is selected
+      if (!portTypes.includes('tcp')) {
+        form.setValue('portTypes', [...portTypes, 'tcp'])
+      }
+    }
+  }, [scanType, portTypes, form])
 
   const handleTcpTopPortsChange = (value: string) => {
     // If selecting "disabled", clear the dropdown value
@@ -158,7 +224,41 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
   }
 
   const handleSubmit = (values: ScanFormValues) => {
-    onSubmit(values)
+    // For default and deep scans, make sure basic configuration is set
+    const finalValues = { ...values };
+    
+    // If deep scan, set all advanced options
+    if (values.scanType === 'deep') {
+      finalValues.options = [
+        'os-detection',
+        'version-detection',
+        'ssl-scan',
+        'http-headers',
+        'traceroute'
+      ];
+      finalValues.hostDiscoveryProbes = ['echo', 'timestamp', 'netmask'];
+      finalValues.timing = 'T3';
+      finalValues.tcpTopPorts = '5000';
+      finalValues.udpTopPorts = '100';
+      if (!finalValues.portTypes?.includes('tcp')) {
+        finalValues.portTypes = [...(finalValues.portTypes || []), 'tcp'];
+      }
+      if (!finalValues.portTypes?.includes('udp')) {
+        finalValues.portTypes = [...(finalValues.portTypes || []), 'udp'];
+      }
+    } 
+    // If default scan, set minimal options
+    else if (values.scanType === 'default') {
+      finalValues.detectionTechnique = 'syn';
+      finalValues.tcpTopPorts = '1000';
+      finalValues.hostDiscoveryProbes = ['echo'];
+      finalValues.timing = 'T5';
+      if (!finalValues.portTypes?.includes('tcp')) {
+        finalValues.portTypes = [...(finalValues.portTypes || []), 'tcp'];
+      }
+    }
+    
+    onSubmit(finalValues);
   }
 
   return (
@@ -239,7 +339,7 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                         defaultValue={field.value}
                         className="flex flex-col space-y-1"
                       >
-                        <TooltipProvider>
+                                                  <TooltipProvider>
                           <FormItem className="flex items-center space-x-3 space-y-0">
                             <FormControl>
                               <RadioGroupItem value="default" />
@@ -248,7 +348,11 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                               <TooltipTrigger asChild>
                                 <FormLabel className="font-normal cursor-help">Default</FormLabel>
                               </TooltipTrigger>
-                              <TooltipContent className="max-w-sm">
+                              <TooltipContent 
+                                side="right" 
+                                align="start" 
+                                className="w-72 p-3 text-sm"
+                              >
                                 <p>
                                   Basic scan that checks the most common 1000 ports. Fast and suitable for most
                                   scenarios. Duration: 1-5 minutes per target.
@@ -265,7 +369,11 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                               <TooltipTrigger asChild>
                                 <FormLabel className="font-normal cursor-help">Deep</FormLabel>
                               </TooltipTrigger>
-                              <TooltipContent className="max-w-sm">
+                              <TooltipContent 
+                                side="right" 
+                                align="start" 
+                                className="w-72 p-3 text-sm"
+                              >
                                 <p>
                                   Comprehensive scan that includes service detection, OS detection, and script scanning
                                   on all ports. Slower but more thorough. Duration: 10-30 minutes per target.
@@ -282,7 +390,11 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                               <TooltipTrigger asChild>
                                 <FormLabel className="font-normal cursor-help">Custom</FormLabel>
                               </TooltipTrigger>
-                              <TooltipContent className="max-w-sm">
+                              <TooltipContent 
+                                side="right" 
+                                align="start" 
+                                className="w-72 p-3 text-sm"
+                              >
                                 <p>
                                   Configure your own scan parameters including port selection, detection techniques, and
                                   timing. Duration varies based on settings.
@@ -321,6 +433,7 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                                 <FormControl>
                                   <Checkbox
                                     checked={field.value?.includes("tcp")}
+                                    disabled={tcpDisabled}
                                     onCheckedChange={(checked) => {
                                       const current = field.value || []
                                       if (checked) {
@@ -337,6 +450,7 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                                 <FormControl>
                                   <Checkbox
                                     checked={field.value?.includes("udp")}
+                                    disabled={udpDisabled}
                                     onCheckedChange={(checked) => {
                                       const current = field.value || []
                                       if (checked) {
@@ -366,7 +480,7 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                                   <Input
                                     placeholder="e.g., 80,443,8080 or 1-1000"
                                     {...field}
-                                    disabled={tcpInputDisabled}
+                                    disabled={tcpInputDisabled || !portTypes.includes('tcp')}
                                     onChange={handleTcpPortsChange}
                                   />
                                 </FormControl>
@@ -389,7 +503,7 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                                   <Select
                                     onValueChange={handleTcpTopPortsChange}
                                     value={field.value || "disabled"}
-                                    disabled={!!tcpPorts}
+                                    disabled={!!tcpPorts || !portTypes.includes('tcp')}
                                   >
                                     <SelectTrigger className="w-full">
                                       <SelectValue placeholder="Or select top ports" />
@@ -425,7 +539,7 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                                   <Input
                                     placeholder="e.g., 53,123,161 or 1-1000"
                                     {...field}
-                                    disabled={udpInputDisabled}
+                                    disabled={udpInputDisabled || !portTypes.includes('udp')}
                                     onChange={handleUdpPortsChange}
                                   />
                                 </FormControl>
@@ -448,7 +562,7 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                                   <Select
                                     onValueChange={handleUdpTopPortsChange}
                                     value={field.value || "disabled"}
-                                    disabled={!!udpPorts}
+                                    disabled={!!udpPorts || !portTypes.includes('udp')}
                                   >
                                     <SelectTrigger className="w-full">
                                       <SelectValue placeholder="Or select top ports" />
@@ -679,7 +793,7 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                                       <TooltipTrigger asChild>
                                         <FormLabel className="font-normal cursor-help">T0 (Paranoid)</FormLabel>
                                       </TooltipTrigger>
-                                      <TooltipContent>
+                                      <TooltipContent side="top" align="center" className="w-64 p-3 text-sm">
                                         <p>
                                           Very slow scan designed to avoid detection. Serializes all scans and waits up
                                           to 5 minutes between probes.
@@ -696,7 +810,7 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                                       <TooltipTrigger asChild>
                                         <FormLabel className="font-normal cursor-help">T1 (Sneaky)</FormLabel>
                                       </TooltipTrigger>
-                                      <TooltipContent>
+                                      <TooltipContent side="top" align="center" className="w-64 p-3 text-sm">
                                         <p>
                                           Slow scan that minimizes bandwidth usage and target impact. Waits 15 seconds
                                           between probes.
@@ -713,7 +827,7 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                                       <TooltipTrigger asChild>
                                         <FormLabel className="font-normal cursor-help">T2 (Polite)</FormLabel>
                                       </TooltipTrigger>
-                                      <TooltipContent>
+                                      <TooltipContent side="top" align="center" className="w-64 p-3 text-sm">
                                         <p>
                                           Slows down to consume less bandwidth and target resources. Waits 0.4 seconds
                                           between probes.
@@ -730,7 +844,7 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                                       <TooltipTrigger asChild>
                                         <FormLabel className="font-normal cursor-help">T3 (Normal)</FormLabel>
                                       </TooltipTrigger>
-                                      <TooltipContent>
+                                      <TooltipContent side="top" align="center" className="w-64 p-3 text-sm">
                                         <p>Default timing template with a balance between accuracy and speed.</p>
                                       </TooltipContent>
                                     </Tooltip>
@@ -744,7 +858,7 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                                       <TooltipTrigger asChild>
                                         <FormLabel className="font-normal cursor-help">T4 (Aggressive)</FormLabel>
                                       </TooltipTrigger>
-                                      <TooltipContent>
+                                      <TooltipContent side="top" align="center" className="w-64 p-3 text-sm">
                                         <p>
                                           Faster scan that assumes a reasonably fast and reliable network. May overwhelm
                                           slow hosts.
@@ -761,7 +875,7 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                                       <TooltipTrigger asChild>
                                         <FormLabel className="font-normal cursor-help">T5 (Insane)</FormLabel>
                                       </TooltipTrigger>
-                                      <TooltipContent>
+                                      <TooltipContent side="top" align="center" className="w-64 p-3 text-sm">
                                         <p>
                                           Very aggressive scan that sacrifices accuracy for speed. Assumes an
                                           extraordinarily fast network.

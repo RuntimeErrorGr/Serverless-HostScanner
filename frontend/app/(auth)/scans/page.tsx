@@ -19,6 +19,8 @@ import { GenerateReportDialog } from "@/components/generate-report-dialog"
 import { Plus, MoreHorizontal, FileText, Trash2, Search } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { useAuth } from "@/components/auth-provider"
+import { scansAPI } from "@/lib/api"
 
 // Mock data for scans - can be empty for testing empty state
 const mockScans = Array.from({ length: 20 }).map((_, i) => ({
@@ -31,14 +33,86 @@ const mockScans = Array.from({ length: 20 }).map((_, i) => ({
   progress: Math.floor(Math.random() * 100),
 }))
 
+// Format scan options from form data
+const formatScanOptions = (values: any) => {
+  const scanOptions: any = {};
+
+  // Add detection technique
+  if (values.detectionTechnique) {
+    const detectionMapping: Record<string, boolean> = {
+      'syn': values.detectionTechnique === 'syn',
+      'connect': values.detectionTechnique === 'connect',
+      'ack': values.detectionTechnique === 'ack',
+      'window': values.detectionTechnique === 'window',
+      'maimon': values.detectionTechnique === 'maimon',
+      'null': values.detectionTechnique === 'null',
+      'fin': values.detectionTechnique === 'fin',
+      'xmas': values.detectionTechnique === 'xmas'
+    };
+
+    scanOptions.tcp_syn_scan = detectionMapping.syn;
+    scanOptions.tcp_ack_scan = detectionMapping.ack;
+    scanOptions.tcp_connect_scan = detectionMapping.connect;
+    scanOptions.tcp_window_scan = detectionMapping.window;
+    scanOptions.tcp_null_scan = detectionMapping.null;
+    scanOptions.tcp_fin_scan = detectionMapping.fin;
+    scanOptions.tcp_xmas_scan = detectionMapping.xmas;
+  } else {
+    // Default to SYN scan if not specified
+    scanOptions.tcp_syn_scan = true;
+  }
+
+  // Add host discovery probes
+  if (values.hostDiscoveryProbes) {
+    scanOptions.echo_request = values.hostDiscoveryProbes.includes('echo');
+    scanOptions.timestamp_request = values.hostDiscoveryProbes.includes('timestamp');
+    scanOptions.address_mask_request = values.hostDiscoveryProbes.includes('netmask');
+  }
+
+  // Add detection options
+  if (values.options) {
+    scanOptions.os_detection = values.options.includes('os-detection');
+    scanOptions.service_version = values.options.includes('version-detection');
+    scanOptions.ssl_scan = values.options.includes('ssl-scan');
+    scanOptions.http_headers = values.options.includes('http-headers');
+    scanOptions.traceroute = values.options.includes('traceroute');
+  }
+
+  // Add timing
+  if (values.timing) {
+    scanOptions.timing_flag = values.timing.replace('T', '');
+  }
+
+  // Add port specifications
+  if (values.portTypes && values.portTypes.includes('tcp')) {
+    if (values.tcpTopPorts && values.tcpTopPorts !== 'disabled') {
+      scanOptions.tcp_ports = `top-${values.tcpTopPorts}`;
+    } else if (values.tcpPorts) {
+      scanOptions.tcp_ports = values.tcpPorts;
+    }
+  }
+
+  if (values.portTypes && values.portTypes.includes('udp')) {
+    if (values.udpTopPorts && values.udpTopPorts !== 'disabled') {
+      scanOptions.udp_ports = `top-${values.udpTopPorts}`;
+    } else if (values.udpPorts) {
+      scanOptions.udp_ports = values.udpPorts;
+    }
+  }
+
+  return scanOptions;
+};
+
 export default function ScansPage() {
   const router = useRouter()
+  const { user } = useAuth()
   const [isStartScanModalOpen, setIsStartScanModalOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [isReportDialogOpen, setIsReportDialogOpen] = useState(false)
   const [selectedScan, setSelectedScan] = useState<any>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
+  const [isLoading, setIsLoading] = useState(false)
 
   // For testing empty state, uncomment the next line
   // const scans: typeof mockScans = []
@@ -70,6 +144,7 @@ export default function ScansPage() {
   const confirmDeleteScan = () => {
     // API call would go here
     toast({
+      variant: "success",
       title: "Scan deleted",
       description: `Scan ${selectedScan.name} has been deleted.`,
     })
@@ -79,6 +154,7 @@ export default function ScansPage() {
   const confirmGenerateReport = (format: string) => {
     // API call would go here
     toast({
+      variant: "success",
       title: "Report generated",
       description: `${format.toUpperCase()} report for ${selectedScan.name} has been generated.`,
     })
@@ -86,15 +162,54 @@ export default function ScansPage() {
     router.push("/reports")
   }
 
-  const handleStartScan = (data: any) => {
-    // API call would go here
-    toast({
-      title: "Scan started",
-      description: "Your scan has been started successfully.",
-    })
-    setIsStartScanModalOpen(false)
-    // Redirect to running scan page
-    router.push(`/scans/new-scan-id/running`)
+  const handleStartScan = async (values: any) => {
+    try {
+      setIsLoading(true);
+      
+      // Parse targets from comma-separated string to array
+      const targets = values.targets
+        .split(/[,\n]/)
+        .map((t: string) => t.trim())
+        .filter(Boolean);
+
+      // Format scan type
+      const scanType = values.scanType;
+      
+      // Format scan options
+      const scanOptions = formatScanOptions(values);
+
+      // Prepare payload for API
+      const payload = {
+        targets,
+        type: scanType,
+        scan_options: scanOptions
+      };
+
+      console.log('Sending scan request:', payload);
+
+      // Use the scansAPI helper which handles authentication
+      const data = await scansAPI.startScan(payload);
+      
+      toast({
+        title: "Scan started",
+        description: "Your scan has been started successfully.",
+        variant: "success",
+      });
+      
+      // Redirect to running scan page
+      router.push(`/scans/${data.scan_uuid}/running`);
+    } catch (error) {
+      console.error('Error starting scan:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to start scan",
+        variant: "error",
+      });
+    } finally {
+      // Always close the modal and set loading to false, regardless of success or error
+      setIsStartScanModalOpen(false);
+      setIsLoading(false);
+    }
   }
 
   const columns = [
@@ -192,7 +307,7 @@ export default function ScansPage() {
           <h1 className="text-3xl font-bold tracking-tight">Scans</h1>
           <p className="text-muted-foreground">Manage and view your network scans</p>
         </div>
-        <Button onClick={() => setIsStartScanModalOpen(true)}>
+        <Button onClick={() => setIsStartScanModalOpen(true)} disabled={isLoading}>
           <Plus className="mr-2 h-4 w-4" /> Start New Scan
         </Button>
       </div>
@@ -210,7 +325,7 @@ export default function ScansPage() {
                 <p className="text-muted-foreground mt-2 mb-6">
                   You haven't run any network scans yet. Start your first scan to begin discovering network information.
                 </p>
-                <Button onClick={() => setIsStartScanModalOpen(true)}>
+                <Button onClick={() => setIsStartScanModalOpen(true)} disabled={isLoading}>
                   <Plus className="mr-2 h-4 w-4" /> Start New Scan
                 </Button>
               </div>

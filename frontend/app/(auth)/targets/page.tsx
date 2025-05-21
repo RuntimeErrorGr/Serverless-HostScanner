@@ -56,6 +56,7 @@ export default function TargetsPage() {
   const confirmDeleteTarget = () => {
     // API call would go here
     toast({
+      variant: "success",
       title: "Target deleted",
       description: `Target ${selectedTarget.name} has been deleted.`,
     })

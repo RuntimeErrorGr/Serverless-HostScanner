@@ -76,6 +76,7 @@ export default function FinishedScanPage() {
   const handleGenerateReport = (format: string) => {
     // API call would go here
     toast({
+      variant: "success",
       title: "Report generated",
       description: `${format.toUpperCase()} report for ${scan.name} has been generated.`,
     })

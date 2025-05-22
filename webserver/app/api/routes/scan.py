@@ -20,6 +20,7 @@ from app.models.target import Target
 from app.models.scan import Scan, ScanStatus, ScanType
 from app.models.user import User
 from app.tasks import watch_scan
+from app.models.finding import Finding
 
 router = APIRouter()
 
@@ -234,7 +235,6 @@ def get_scan_by_uuid(
         "type": scan.type.value if scan.type else None,
         "parameters": scan.parameters,
         "output": scan.output,
-        "result": scan.result,
         "targets": target_names,
         "created_at": scan.created_at,
         "started_at": scan.started_at,
@@ -265,16 +265,78 @@ def get_scan_status(
     }
 
 
+@router.get("/{scan_uuid}/findings")
+def get_findings_by_scan_uuid(
+    scan_uuid: str,
+    user: OIDCUser = Depends(idp.get_current_user()),
+    db: Session = Depends(get_db),
+):
+    """
+    Retrieve all findings for a specific scan.
+    """
+    # Get the user from db with the keycloak_uuid
+    db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+    
+    # Find the scan
+    scan = db.query(Scan).filter_by(uuid=scan_uuid).first()
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    
+    # Check if the scan belongs to the user
+    if scan.user_id != db_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to access this scan")
+    
+    # Get all targets from this scan
+    target_ids = [target.id for target in scan.targets]
+    
+    # Get all findings for these targets
+    findings = db.query(Finding).filter(Finding.target_id.in_(target_ids)).all()
+    
+    # Format findings for response
+    findings_data = []
+    for finding in findings:
+        findings_data.append({
+            "id": finding.id,
+            "name": finding.name,
+            "description": finding.description,
+            "recommendation": finding.recommendation,
+            "port": finding.port,
+            "port_state": finding.port_state.value if finding.port_state else None,
+            "protocol": finding.protocol,
+            "service": finding.service,
+            "os": finding.os,
+            "traceroute": finding.traceroute,
+            "severity": finding.severity.value if finding.severity else None,
+            "target": {
+                "id": finding.target.id,
+                "name": finding.target.name
+            } if finding.target else None,
+            "created_at": finding.created_at,
+            "updated_at": finding.updated_at
+        })
+    
+    return {"data": findings_data}
+
+
 def create_scan_entry(inserted_targets, db_user, payload, db):
     scan_type = payload.get("scan_type")
     scan_options = payload.get("scan_options")
     scan_uuid = payload.get("scan_id")
+    targets = payload.get("targets", [])
+    
+    # Create a meaningful scan name based on targets and type
+    target_summary = ", ".join(targets[:3])
+    if len(targets) > 3:
+        target_summary += f" and {len(targets) - 3} more"
+    
+    scan_name = f"Scan of {target_summary} - {scan_type}"
 
     new_scan = Scan(
         user_id=db_user.id,
         type=scan_type,
         status=ScanStatus.PENDING,
         uuid=scan_uuid,
+        name=scan_name,
         targets=inserted_targets,  # associate all targets
         parameters=scan_options
     )
@@ -304,9 +366,7 @@ def start_openfaas_job(payload):
     try:
         r = redis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=0)
         r.set(f"scan:{scan_uuid}", json.dumps({"status": "pending"}))
-        # Also store scan options in Redis for reference
-        if scan_options:
-            r.set(f"scan_options:{scan_uuid}", json.dumps(scan_options))
+        # Also store scan options in Redis for reference    
         r.close()
         log.info(f"Initialized Redis keys for scan_uuid: {scan_uuid}")
     except Exception as e:

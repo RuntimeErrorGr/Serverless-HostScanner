@@ -13,8 +13,8 @@ export function ColorProgressBar({ value, max, className, indicatorClassName, ..
 
   // Calculate color based on progress
   const getColor = () => {
-    if (percentage < 0.3) return "bg-red-500"
-    if (percentage < 0.7) return "bg-yellow-500"
+    if (percentage < 0.1) return "bg-red-500"
+    if (percentage < 0.6) return "bg-yellow-500"
     return "bg-green-500"
   }
 

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, ForeignKey, JSON, DateTime, Table
+from sqlalchemy import Column, String, Integer, ForeignKey, JSON, DateTime, Table, Float
 from sqlalchemy.orm import relationship
 from sqlalchemy import Enum as SqlEnum
 from sqlalchemy.dialects.mysql import LONGTEXT
@@ -23,12 +23,14 @@ class ScanStatus(Enum):
 class ScanType(Enum):
     DEFAULT = "default"
     CUSTOM = "custom"
+    DEEP = "deep"
 
 class Scan(Base):
     __tablename__ = 'scans'
 
     id = Column(Integer, primary_key=True)
     uuid = Column(String(36))
+    name = Column(String(255))
     status = Column(SqlEnum(ScanStatus, name="scan_status"), default=ScanStatus.PENDING)
     type = Column(SqlEnum(ScanType, name="scan_type"), default=ScanType.DEFAULT)
     output = Column(LONGTEXT)

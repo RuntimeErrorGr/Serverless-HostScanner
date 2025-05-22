@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, ForeignKey, DateTime
+from sqlalchemy import Column, String, Integer, ForeignKey, DateTime, JSON
 from sqlalchemy.orm import relationship
 from app.database.base_class import Base
 from datetime import datetime
@@ -23,14 +23,14 @@ class Finding(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String(255))
-    description = Column(String(255))
-    recommendation = Column(String(255))
+    description = Column(String(1024))
+    recommendation = Column(String(1024))
     port = Column(Integer)
     port_state = Column(SqlEnum(PortState), default=PortState.FILTERED)
     protocol = Column(String(255))
     service = Column(String(255))
-    os = Column(String(255))
-    traceroute = Column(String(255))
+    os = Column(JSON)
+    traceroute = Column(JSON)
     severity = Column(SqlEnum(Severity), default=Severity.INFO)
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)

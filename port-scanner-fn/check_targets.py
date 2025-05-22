@@ -15,6 +15,7 @@ from .check_targets_utils import (
     NmapParseException,
     get_responding_urls,
     is_netblock_cidr,
+    Host,
 )
 
 
@@ -43,7 +44,7 @@ class CheckTargets:
             retry_on_timeout=True,
             decode_responses=True
         )
-        self.alive_targets: set[str] = set()
+        self.alive_targets: set[Host] = set()
 
 
     def parse_nmap_progress(self, line: str) -> float | None:
@@ -63,16 +64,19 @@ class CheckTargets:
             return
         
         # Skip common noise
-        if "Read data files from" in line or "ETC:" in line:
+        if "Read data files from" in line:
             return
+
+        # Extract progress from timing lines
+        if "ETC:" in line:
+            progress = self.parse_nmap_progress(line)
+            if progress is not None:
+                self.redis_client.publish(f"{self.config.scan_id}:progress", str(progress))
+                return
         
         seen_lines.add(line)
         self.redis_client.publish(self.config.scan_id, line)
-        
-        # Check for progress information and publish to separate channel
-        progress = self.parse_nmap_progress(line)
-        if progress is not None:
-            self.redis_client.publish(f"{self.config.scan_id}:progress", str(progress))
+
 
     def __check_alive(self) -> None:
         """
@@ -104,6 +108,7 @@ class CheckTargets:
                 # Send initial information
                 starting_message = f"Starting scan of {len(self.config.targets)} targets..."
                 self.redis_client.publish(self.config.scan_id, starting_message)
+                self.redis_client.publish(f"{self.config.scan_id}:progress", "2")
                 seen_lines.add(starting_message)
 
                 while True:
@@ -244,6 +249,7 @@ class CheckTargets:
             logging.debug("Writing results to Redis for scan id: %s", self.config.scan_id)
             # Store status in the scan:<scan_id> key
             self.redis_client.set(f"scan:{self.config.scan_id}", json.dumps({"status": self.status}))
+            self.redis_client.publish(f"{self.config.scan_id}:progress", "100")
             # Store results in the scan_results:<scan_id> key
             self.redis_client.set(f"scan_results:{self.config.scan_id}", json.dumps(results["scan_results"]))
             
@@ -251,7 +257,6 @@ class CheckTargets:
             return results
         except redis.RedisError as e:
             logging.error("Failed to write results to Redis: %s", str(e))
-            self.status = "failed"
             self.redis_client.set(f"scan:{self.config.scan_id}", json.dumps({"status": self.status}))
             raise CheckTargetsException(f"Redis write error: {str(e)}") from e
 
@@ -274,7 +279,7 @@ def parse_cli_arguments():
     parser.add_argument("--targets", help="Targets to check.", required=True)
     parser.add_argument(
         "--scan-type",
-        choices=[ScanType.DEFAULT.value, ScanType.CUSTOM.value],
+        choices=[ScanType.DEFAULT.value, ScanType.CUSTOM.value, ScanType.DEEP.value],
         help="Type of scan to perform",
         default=ScanType.DEFAULT.value,
     )

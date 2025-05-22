@@ -8,69 +8,135 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { GenerateReportDialog } from "@/components/generate-report-dialog"
-import { FileText } from "lucide-react"
+import { FileText, Loader2 } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
+import { scansAPI } from "@/lib/api"
 
-// Mock data for a completed scan
-const mockScanData = {
-  id: "scan-1",
-  name: "Scan 1",
-  targets: ["example.com", "192.168.1.1", "10.0.0.1"],
-  status: "completed",
-  startTime: new Date(Date.now() - 3600000).toISOString(),
-  endTime: new Date().toISOString(),
-  nmapOutput: `Starting Nmap 7.92 ( https://nmap.org ) at 2023-05-19 12:34 UTC
-Scanning example.com (93.184.216.34) [1000 ports]
-Discovered open port 80/tcp on 93.184.216.34
-Discovered open port 443/tcp on 93.184.216.34
-Scanning 192.168.1.1 [1000 ports]
-Discovered open port 22/tcp on 192.168.1.1
-Discovered open port 80/tcp on 192.168.1.1
-Discovered open port 443/tcp on 192.168.1.1
-Scanning 10.0.0.1 [1000 ports]
-Discovered open port 22/tcp on 10.0.0.1
-Discovered open port 3389/tcp on 10.0.0.1
-Service detection performed. Please report any incorrect results at https://nmap.org/submit/
-Nmap done: 3 IP addresses (3 hosts up) scanned in 25.62 seconds`,
-  results: [
-    {
-      target: "example.com (93.184.216.34)",
-      ports: [
-        { port: 80, protocol: "tcp", service: "http", state: "open" },
-        { port: 443, protocol: "tcp", service: "https", state: "open" },
-      ],
-      os: "Linux 3.x",
-    },
-    {
-      target: "192.168.1.1",
-      ports: [
-        { port: 22, protocol: "tcp", service: "ssh", state: "open" },
-        { port: 80, protocol: "tcp", service: "http", state: "open" },
-        { port: 443, protocol: "tcp", service: "https", state: "open" },
-      ],
-      os: "Cisco IOS 15.x",
-    },
-    {
-      target: "10.0.0.1",
-      ports: [
-        { port: 22, protocol: "tcp", service: "ssh", state: "open" },
-        { port: 3389, protocol: "tcp", service: "ms-wbt-server", state: "open" },
-      ],
-      os: "Windows Server 2019",
-    },
-  ],
+// Interface for scan data from the API
+interface ScanData {
+  scan_uuid: string;
+  name: string;
+  status: string;
+  type: string;
+  parameters?: Record<string, any>;
+  output?: string;
+  targets: string[];
+  created_at: string;
+  started_at?: string;
+  finished_at?: string;
+}
+
+interface TargetResult {
+  target: string;
+  os: string;
+  ports: {
+    port: number;
+    protocol: string;
+    service: string;
+    state: string;
+  }[];
+}
+
+interface Finding {
+  id: number;
+  name: string;
+  description: string;
+  recommendation: string;
+  port: number;
+  port_state: string;
+  protocol: string;
+  service: string;
+  os: Record<string, any>;
+  traceroute: string;
+  severity: string;
+  target_id: number;
+  target?: {
+    id: number;
+    name: string;
+  };
+  created_at: string;
+  updated_at: string;
+}
+
+// Default empty state
+const initialScanData: ScanData = {
+  scan_uuid: "",
+  name: "",
+  status: "",
+  type: "",
+  targets: [],
+  created_at: ""
 }
 
 export default function FinishedScanPage() {
   const params = useParams()
   const scanId = params.id as string
-  const [scan, setScan] = useState(mockScanData)
+  const [scan, setScan] = useState<ScanData>(initialScanData)
+  const [findings, setFindings] = useState<Finding[]>([])
+  const [targetResults, setTargetResults] = useState<TargetResult[]>([])
+  const [isLoading, setIsLoading] = useState<boolean>(true)
   const [isReportDialogOpen, setIsReportDialogOpen] = useState(false)
 
   // Fetch scan data
   useEffect(() => {
-    // In a real app, you would fetch the scan data from the API
-    console.log(`Fetching scan data for ${scanId}...`)
+    async function fetchScanData() {
+      if (!scanId) return;
+      
+      try {
+        setIsLoading(true);
+        
+        // Fetch scan details using the API
+        const scanData = await scansAPI.getScan(scanId);
+        setScan(scanData);
+        
+        // Get findings for this scan using the API
+        try {
+          const findingsData = await scansAPI.getScanFindings(scanId);
+          setFindings(findingsData.data || []);
+          
+          // Process findings into target results
+          const resultsMap = new Map<string, TargetResult>();
+          
+          for (const finding of findingsData.data || []) {
+            const targetName = finding.target?.name || 'Unknown';
+            
+            if (!resultsMap.has(targetName)) {
+              resultsMap.set(targetName, {
+                target: targetName,
+                os: finding.os?.name || 'Unknown',
+                ports: []
+              });
+            }
+            
+            // Add port information if it's a port finding
+            if (finding.port) {
+              const targetResult = resultsMap.get(targetName)!;
+              targetResult.ports.push({
+                port: finding.port,
+                protocol: finding.protocol || 'unknown',
+                service: finding.service || 'unknown',
+                state: finding.port_state || 'unknown'
+              });
+            }
+          }
+          
+          setTargetResults(Array.from(resultsMap.values()));
+        } catch (findingsErr) {
+          console.error('Error fetching findings:', findingsErr);
+        }
+      } catch (err) {
+        console.error('Error fetching scan data:', err);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to load scan data. Please try again."
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    
+    fetchScanData();
   }, [scanId])
 
   const handleGenerateReport = (format: string) => {
@@ -78,9 +144,21 @@ export default function FinishedScanPage() {
     toast({
       variant: "success",
       title: "Report generated",
-      description: `${format.toUpperCase()} report for ${scan.name} has been generated.`,
+      description: `${format.toUpperCase()} report has been generated.`,
     })
     setIsReportDialogOpen(false)
+  }
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-[400px]">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading scan data...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -88,7 +166,7 @@ export default function FinishedScanPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">{scan.name}</h1>
-          <p className="text-muted-foreground">Scan completed on {new Date(scan.endTime).toLocaleString()}</p>
+          <p className="text-muted-foreground">Scan completed on {new Date(scan.finished_at).toLocaleString()}</p>
         </div>
         <Button onClick={() => setIsReportDialogOpen(true)}>
           <FileText className="mr-2 h-4 w-4" />
@@ -106,22 +184,24 @@ export default function FinishedScanPage() {
               <p className="text-sm font-medium text-muted-foreground">Status</p>
               <p className="mt-1 flex items-center">
                 <Badge variant="success" className="mr-2">
-                  Completed
+                  {scan.status === "completed" ? "Completed" : scan.status === "failed" ? "Failed" : scan.status}
                 </Badge>
               </p>
             </div>
             <div>
               <p className="text-sm font-medium text-muted-foreground">Start Time</p>
-              <p className="mt-1">{new Date(scan.startTime).toLocaleString()}</p>
+              <p className="mt-1">{scan.started_at ? new Date(scan.started_at).toLocaleString() : 'N/A'}</p>
             </div>
             <div>
               <p className="text-sm font-medium text-muted-foreground">End Time</p>
-              <p className="mt-1">{new Date(scan.endTime).toLocaleString()}</p>
+              <p className="mt-1">{scan.finished_at ? new Date(scan.finished_at).toLocaleString() : 'N/A'}</p>
             </div>
             <div>
               <p className="text-sm font-medium text-muted-foreground">Duration</p>
               <p className="mt-1">
-                {Math.round((new Date(scan.endTime).getTime() - new Date(scan.startTime).getTime()) / 60000)} minutes
+                {scan.started_at && scan.finished_at 
+                  ? Math.round((new Date(scan.finished_at).getTime() - new Date(scan.started_at).getTime()) / 60000) + ' minutes'
+                  : 'N/A'}
               </p>
             </div>
           </div>
@@ -140,8 +220,8 @@ export default function FinishedScanPage() {
               <CardTitle>Scan Results</CardTitle>
             </CardHeader>
             <CardContent>
-              {scan.results.length > 0 ? (
-                scan.results.map((result, index) => (
+              {targetResults.length > 0 ? (
+                targetResults.map((result, index) => (
                   <div key={index} className="mb-6 last:mb-0">
                     <h3 className="text-lg font-medium mb-2">{result.target}</h3>
                     <div className="mb-2">
@@ -189,7 +269,7 @@ export default function FinishedScanPage() {
             </CardHeader>
             <CardContent>
               <div className="bg-zinc-950 dark:bg-zinc-900 text-green-400 font-mono text-sm p-4 rounded-md h-[400px] overflow-auto whitespace-pre-wrap">
-                {scan.nmapOutput || (
+                {scan.output || (
                   <div className="flex items-center justify-center h-full text-muted-foreground">
                     <div className="text-center">
                       <p>No Nmap output available</p>
@@ -206,7 +286,7 @@ export default function FinishedScanPage() {
               <CardTitle>Targets</CardTitle>
             </CardHeader>
             <CardContent>
-              {scan.results.length > 0 ? (
+              {targetResults.length > 0 ? (
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -216,7 +296,7 @@ export default function FinishedScanPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {scan.results.map((result, index) => (
+                    {targetResults.map((result, index) => (
                       <TableRow key={index}>
                         <TableCell>{result.target}</TableCell>
                         <TableCell>{result.ports.filter((p) => p.state === "open").length}</TableCell>

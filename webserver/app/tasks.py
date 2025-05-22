@@ -7,6 +7,8 @@ from app.config import settings
 from app.log import get_logger
 from app.database.db import get_db
 from app.models.scan import Scan, ScanStatus
+from app.models.target import Target
+from app.models.finding import Finding, PortState, Severity
 from datetime import datetime
 
 celery_app = Celery(
@@ -32,7 +34,15 @@ def update_scan_status(scan_uuid, status, db):
     if status == ScanStatus.RUNNING and scan.status != ScanStatus.RUNNING:
         scan.started_at = datetime.now()
     elif (status == ScanStatus.COMPLETED or status == ScanStatus.FAILED) and scan.finished_at is None:
-        scan.finished_at = datetime.now()
+        scan.finished_at = datetime.now()    
+        # When scan completes or fails, also send a final progress=100 to the websocket
+        # This ensures the frontend progress bar always reaches 100%
+        try:
+            r = redis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=0)
+            r.publish(f"{scan_uuid}:progress", "100")
+            r.close()
+        except Exception as e:
+            log.error(f"Error publishing final progress for scan {scan_uuid}: {e}")
     
     scan.status = status
     db.commit()
@@ -93,8 +103,74 @@ def watch_scan(scan_uuid):
             if scan_results_data:
                 try:
                     scan_results = json.loads(scan_results_data)
+
+                    new_findings_count = 0
+
+                    for host in scan_results:
+                        ip_addr = host.get("ip_address")
+                        if not ip_addr:
+                            continue
+
+                        # Get or create the corresponding target for this host
+                        target = (
+                            db.query(Target)
+                            .filter_by(user_id=scan.user_id, name=ip_addr)
+                            .first()
+                        )
+
+                        if not target:
+                            target = Target(user_id=scan.user_id, name=ip_addr)
+                            db.add(target)
+                            db.flush()  # Ensures target.id is populated
+
+                        # Make sure the scan-target association exists
+                        if target not in scan.targets:
+                            scan.targets.append(target)
+
+                        # Persist port findings (one finding per open/filtered port)
+                        for port_info in host.get("ports", []):
+                            try:
+                                port_number = int(port_info.get("port", 0)) if port_info.get("port") else None
+                            except ValueError:
+                                port_number = None
+
+                            protocol = port_info.get("protocol")
+                            state_str = (port_info.get("state") or "unknown").lower()
+                            port_state = (
+                                PortState(state_str)
+                                if state_str in PortState._value2member_map_
+                                else PortState.UNKNOWN
+                            )
+
+                            service_name = ""
+                            if isinstance(port_info.get("service"), dict):
+                                service_name = port_info.get("service", {}).get("name", "")
+
+                            finding = Finding(
+                                name=f"{ip_addr}:{port_number}/{protocol}" if port_number else ip_addr,
+                                description="",
+                                recommendation="",
+                                port=port_number,
+                                port_state=port_state,
+                                protocol=protocol,
+                                service=service_name,
+                                os=host.get("os_info", {}).get("name", ""),
+                                traceroute=json.dumps(host.get("traceroute", [])),
+                                severity=Severity.INFO,
+                                target=target,
+                            )
+                            db.add(finding)
+                            new_findings_count += 1
+
                     db.commit()
-                    log.info(f"Updated scan {scan_uuid} results from Redis")
+                    db.close()
+
+                    # Remove the results key so we don't process twice
+                    r.delete(results_key)
+
+                    log.info(
+                        f"Processed {new_findings_count} findings and updated scan {scan_uuid} results"
+                    )
                 except json.JSONDecodeError:
                     log.error(f"Invalid JSON in Redis scan results for {scan_uuid}")
             
@@ -106,6 +182,12 @@ def watch_scan(scan_uuid):
                 
         except Exception as e:
             log.error(f"Error processing scan status for {scan_uuid}: {e}")
+        
+        # Ensure the DB session is closed before the next loop iteration
+        try:
+            db.close()
+        except Exception:
+            pass
         
         # Wait 2 seconds before checking again
         time.sleep(2)

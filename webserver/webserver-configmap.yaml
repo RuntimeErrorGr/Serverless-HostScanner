@@ -30,6 +30,6 @@ data:
   KEYCLOAK_ADMIN_CLIENT_SECRET: IJizqYeDXxlfwDnq7uhQrREgPLS7B9ti
   KEYCLOAK_REALM: network-scanner
 
-  OPENFAAS_HOST: gateway.openfaas.svc.cluster.local
-  OPENFAAS_PORT: "8080"
+  OPENFAAS_HOST: 192.168.255.206
+  OPENFAAS_PORT: "31112"
   SCANNER_NAME: port-scanner-fn

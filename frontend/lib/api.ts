@@ -76,6 +76,8 @@ async function fetchAPI(endpoint: string, options: RequestInit = {}) {
 export const scansAPI = {
   getScans: () => fetchAPI("/scans"),
   getScan: (id: string) => fetchAPI(`/scans/${id}`),
+  getScanStatus: (id: string) => fetchAPI(`/scans/${id}/status`),
+  getScanFindings: (id: string) => fetchAPI(`/scans/${id}/findings`),
   startScan: (data: any) =>
     fetchAPI("/scans/start", {
       method: "POST",

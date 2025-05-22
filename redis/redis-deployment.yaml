@@ -36,3 +36,18 @@ spec:
     port: 6379
     targetPort: 6379
   type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service-external
+spec:
+  type: NodePort
+  selector:
+    app: redis-nfs
+  ports:
+    - port: 6379
+      targetPort: 6379
+      nodePort: 32666
+      name: http
+    

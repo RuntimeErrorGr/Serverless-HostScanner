@@ -1,7 +1,7 @@
 version: 1.0
 provider:
   name: openfaas
-  gateway: http://192.168.255.200:31112
+  gateway: http://192.168.255.103:8080
 functions:
   port-scanner-fn:
     lang: python3-http-debian
@@ -12,8 +12,8 @@ functions:
       ADDITIONAL_PACKAGE: "nmap musl-dev sudo"
     environment:
       LOGS_PATH: "/home/app/function/logs/"
-      REDIS_HOST: "redis-nfs.default.svc.cluster.local"
-      REDIS_PORT: "6379"
+      REDIS_HOST: "192.168.255.200"
+      REDIS_PORT: "32666"
     annotations:
       com.openfaas.allow-privileged: "true"
 

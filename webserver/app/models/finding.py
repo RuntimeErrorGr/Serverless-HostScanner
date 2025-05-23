@@ -1,7 +1,7 @@
 from sqlalchemy import Column, String, Integer, ForeignKey, DateTime, JSON
 from sqlalchemy.orm import relationship
 from app.database.base_class import Base
-from datetime import datetime
+from app.utils.timezone import now_utc
 from sqlalchemy import Enum as SqlEnum
 from enum import Enum
 
@@ -32,11 +32,14 @@ class Finding(Base):
     os = Column(JSON)
     traceroute = Column(JSON)
     severity = Column(SqlEnum(Severity), default=Severity.INFO)
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
 
     target_id = Column(Integer, ForeignKey('targets.id'))
     target = relationship("Target", back_populates="findings")
+
+    def __repr__(self):
+        return f"<Finding(id={self.id}, name={self.name})>"
 
 
     

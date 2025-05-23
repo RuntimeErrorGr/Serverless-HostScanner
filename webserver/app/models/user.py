@@ -1,7 +1,7 @@
 from sqlalchemy import Column, String, Integer, DateTime, Boolean
 from sqlalchemy.orm import relationship
 from app.database.base_class import Base
-from datetime import datetime
+from app.utils.timezone import now_utc
 
 class User(Base):
     __tablename__ = 'users'
@@ -18,8 +18,8 @@ class User(Base):
     scans = relationship("Scan", back_populates="user", cascade="all, delete-orphan")
     targets = relationship("Target", back_populates="user", cascade="all, delete-orphan")
 
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
 
     def __repr__(self):
         return f"<User(id={self.id}, keycloak_uuid={self.keycloak_uuid}, username={self.username}, email={self.email})>"

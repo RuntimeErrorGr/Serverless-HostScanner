@@ -45,38 +45,216 @@ class CheckTargets:
             decode_responses=True
         )
         self.alive_targets: set[Host] = set()
+        
+        # Progress tracking
+        self.current_phase = "initializing"
+        self.phase_weights = self._calculate_phase_weights()
+        self.overall_progress = 0.0
+        self.last_sent_progress = 0.0
+        self.phase_start_times = {}
+        
+        # Message throttling
+        self.last_status_message_time = 0
+        self.STATUS_MESSAGE_INTERVAL = 10  # seconds
 
+    def _calculate_phase_weights(self) -> dict:
+        """Calculate weights for different scan phases based on enabled options."""
+        weights = {
+            'host_discovery': 5,
+            'tcp_scan': 25,
+            'udp_scan': 0,
+            'os_detection': 0,
+            'service_detection': 0,
+            'nse_scripts': 0
+        }
+        
+        # Check scan options from config
+        has_udp = hasattr(self.config, 'udp_ports') and self.config.udp_ports
+        has_os_detection = hasattr(self.config, 'os_detection') and self.config.os_detection
+        has_service_detection = hasattr(self.config, 'service_version') and self.config.service_version
+        has_scripts = (hasattr(self.config, 'ssl_scan') and self.config.ssl_scan) or \
+                     (hasattr(self.config, 'http_headers') and self.config.http_headers)
+        
+        # Adjust weights based on enabled features
+        if has_udp:
+            weights['udp_scan'] = 35
+            weights['tcp_scan'] = 20  # Reduce TCP weight when UDP is enabled
+            
+        if has_os_detection:
+            weights['os_detection'] = 10
+            
+        if has_service_detection:
+            weights['service_detection'] = 25
+            
+        if has_scripts:
+            weights['nse_scripts'] = 20
+            
+        # Normalize weights to sum to 100
+        total_weight = sum(weights.values())
+        if total_weight > 0:
+            for phase in weights:
+                weights[phase] = (weights[phase] / total_weight) * 100
+                
+        return weights
+
+    def _detect_scan_phase(self, line: str) -> str:
+        """Detect which scan phase is currently running based on output line."""
+        line_lower = line.lower()
+        
+        if 'ping scan' in line_lower or 'host discovery' in line_lower:
+            return 'host_discovery'
+        elif 'syn stealth scan' in line_lower or 'tcp scan' in line_lower:
+            return 'tcp_scan'
+        elif 'udp scan' in line_lower:
+            return 'udp_scan'
+        elif 'os detection' in line_lower:
+            return 'os_detection'
+        elif 'service scan' in line_lower or 'version detection' in line_lower:
+            return 'service_detection'
+        elif 'nse' in line_lower or 'script scan' in line_lower:
+            return 'nse_scripts'
+        
+        return self.current_phase
 
     def parse_nmap_progress(self, line: str) -> float | None:
-        """Parse progress percentage from Nmap output line."""
+        """Parse progress percentage from Nmap output line with intelligent weighting."""
         if "% done" not in line or "ETC:" not in line:
             return None
+            
         try:
-            # Extract percentage from line like "SYN Stealth Scan Timing: About 86.51% done"
+            # Extract percentage from line
             percentage = float(line.split("%")[0].split("About ")[-1].strip())
-            return percentage
+            
+            # Detect current phase
+            new_phase = self._detect_scan_phase(line)
+            if new_phase != self.current_phase:
+                self.current_phase = new_phase
+                import time
+                self.phase_start_times[new_phase] = time.time()
+            
+            # Calculate weighted overall progress
+            phase_weight = self.phase_weights.get(self.current_phase, 0)
+            
+            # Calculate progress contribution from completed phases
+            completed_phases_progress = 0
+            phase_order = ['host_discovery', 'tcp_scan', 'udp_scan', 'os_detection', 'service_detection', 'nse_scripts']
+            
+            for phase in phase_order:
+                if phase == self.current_phase:
+                    break
+                if self.phase_weights[phase] > 0:  # Only count phases that are enabled
+                    completed_phases_progress += self.phase_weights[phase]
+            
+            # Add current phase progress
+            current_phase_progress = (percentage / 100) * phase_weight
+            
+            # Calculate overall progress
+            new_overall_progress = completed_phases_progress + current_phase_progress
+            
+            # Ensure progress only increases (handle Nmap's phase transitions)
+            if new_overall_progress > self.overall_progress:
+                self.overall_progress = round(new_overall_progress, 2)
+            
+            # Only send progress updates if there's a meaningful change (>= 1%)
+            if abs(self.overall_progress - self.last_sent_progress) >= 1.0:
+                self.last_sent_progress = self.overall_progress
+                return min(self.overall_progress, 99.96)  # Cap at 99% until completion
+                
         except (ValueError, IndexError):
+            pass
+            
+        return None
+
+    def _generate_user_friendly_message(self, line: str) -> str | None:
+        """Generate user-friendly messages from technical Nmap output."""
+        import time
+        import re
+        
+        line_lower = line.lower()
+        
+        # Skip timing lines entirely (we parse progress but don't display)
+        if '% done' in line and 'etc:' in line_lower:
             return None
+            
+        # Transform status update lines
+        if 'stats:' in line_lower and 'elapsed' in line_lower:
+            # Throttle status messages
+            current_time = time.time()
+            if current_time - self.last_status_message_time < self.STATUS_MESSAGE_INTERVAL:
+                return None
+            self.last_status_message_time = current_time
+            
+            # Extract elapsed time
+            elapsed_match = re.search(r'(\d+:\d+:\d+|\d+:\d+) elapsed', line)
+            if elapsed_match:
+                elapsed = elapsed_match.group(1)
+                
+                # Generate phase-specific message
+                if self.current_phase == 'host_discovery':
+                    return f"🔍 Discovering live hosts... ({elapsed} elapsed)"
+                elif self.current_phase == 'tcp_scan':
+                    return f"🚀 Scanning TCP ports... ({elapsed} elapsed)"
+                elif self.current_phase == 'udp_scan':
+                    return f"📡 Scanning UDP ports... ({elapsed} elapsed)"
+                elif self.current_phase == 'os_detection':
+                    return f"🖥️  Detecting operating systems... ({elapsed} elapsed)"
+                elif self.current_phase == 'service_detection':
+                    return f"🔍 Identifying services and versions... ({elapsed} elapsed)"
+                elif self.current_phase == 'nse_scripts':
+                    return f"🔬 Running security scripts... ({elapsed} elapsed)"
+                else:
+                    return f"⚡ Scanning in progress... ({elapsed} elapsed)"
+            return None
+            
+        # Transform NSE thread messages
+        if 'nse: active nse script threads' in line_lower:
+            return None  # Skip these technical messages
+            
+        # Transform undergoing messages
+        if 'undergoing' in line_lower:
+            if 'syn stealth scan' in line_lower:
+                return "🚀 Performing TCP port scan..."
+            elif 'udp scan' in line_lower:
+                return "📡 Performing UDP port scan..."
+            elif 'script scan' in line_lower:
+                return "🔬 Running security analysis scripts..."
+            elif 'service scan' in line_lower:
+                return "🔍 Identifying running services..."
+            return None
+            
+        # Let other meaningful messages pass through
+        if any(keyword in line_lower for keyword in [
+            'starting', 'completed', 'finished', 'discovered', 'found', 
+            'warning', 'error', 'failed', 'timeout'
+        ]):
+            return line
+            
+        return None
 
     def __process_scan_output(self, line: str, seen_lines: set) -> None:
-        """Process a single line of scan output."""
-        if not line or line in seen_lines:
-            return
+        """Process a single line of scan output with smart filtering and progress tracking."""
         
-        # Skip common noise
-        if "Read data files from" in line:
+        if not line:
             return
-
-        # Extract progress from timing lines
+            
+        # Always check for progress (but don't display timing lines)
         if "ETC:" in line:
             progress = self.parse_nmap_progress(line)
             if progress is not None:
                 self.redis_client.publish(f"{self.config.scan_id}:progress", str(progress))
-                return
+            return  # Don't display timing lines
         
-        seen_lines.add(line)
-        self.redis_client.publish(self.config.scan_id, line)
-
+        # Generate user-friendly message
+        user_message = self._generate_user_friendly_message(line)
+        if not user_message:
+            return
+            
+        # Avoid sending duplicate messages
+        if user_message in seen_lines:
+            return
+            
+        seen_lines.add(user_message)
+        self.redis_client.publish(self.config.scan_id, user_message)
 
     def __check_alive(self) -> None:
         """

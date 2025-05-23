@@ -4,7 +4,7 @@ from sqlalchemy import Enum as SqlEnum
 from sqlalchemy.dialects.mysql import LONGTEXT
 
 from app.database.base_class import Base
-from datetime import datetime
+from app.utils.timezone import now_utc
 from enum import Enum
 
 scan_target_association = Table(
@@ -34,11 +34,12 @@ class Scan(Base):
     status = Column(SqlEnum(ScanStatus, name="scan_status"), default=ScanStatus.PENDING)
     type = Column(SqlEnum(ScanType, name="scan_type"), default=ScanType.DEFAULT)
     output = Column(LONGTEXT)
+    result = Column(LONGTEXT)
     parameters = Column(JSON)
-    created_at = Column(DateTime, default=datetime.now)
+    created_at = Column(DateTime, default=now_utc)
     started_at = Column(DateTime)
     finished_at = Column(DateTime)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
 
     user_id = Column(Integer, ForeignKey('users.id'))
     user = relationship("User", back_populates="scans")

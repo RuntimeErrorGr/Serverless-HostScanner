@@ -80,7 +80,10 @@ const formatScanOptions = (values: any) => {
 
   // Add timing
   if (values.timing) {
-    scanOptions.timing_flag = values.timing.replace('T', '');
+    scanOptions.timing_flag = parseInt(values.timing.replace('T', ''));
+  } else {
+    // Ensure timing flag is always set with a default value if not specified
+    scanOptions.timing_flag = 3; // Default to T3 (Normal) timing
   }
 
   // Add port specifications

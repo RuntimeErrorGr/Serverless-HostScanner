@@ -1,7 +1,7 @@
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from typing import Optional, Dict, Any, List
-from zoneinfo import ZoneInfo
+from app.utils.timezone import format_iso_bucharest, ensure_timezone
 from .user import UserOut
 from app.models.scan import ScanType
 
@@ -27,7 +27,7 @@ class ScanInDB(ScanBase):
     model_config = ConfigDict(
         from_attributes=True,
         json_encoders={
-            datetime: lambda dt: dt.astimezone(ZoneInfo("Europe/Bucharest")).isoformat()
+            datetime: lambda dt: format_iso_bucharest(ensure_timezone(dt)) if dt else None
         }
     )
 
@@ -40,3 +40,10 @@ class ScanOut(ScanBase):
     finished_at: Optional[datetime] = None
     user: UserOut = None
     targets: Optional[List[str]] = []
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={
+            datetime: lambda dt: format_iso_bucharest(ensure_timezone(dt)) if dt else None
+        }
+    )

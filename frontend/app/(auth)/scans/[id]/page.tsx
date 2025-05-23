@@ -11,6 +11,8 @@ import { GenerateReportDialog } from "@/components/generate-report-dialog"
 import { FileText, Loader2 } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
 import { scansAPI } from "@/lib/api"
+import { formatToBucharestTime, formatDuration } from "@/lib/timezone"
+import { ParameterSection } from "@/components/parameter-section"
 
 // Interface for scan data from the API
 interface ScanData {
@@ -20,42 +22,72 @@ interface ScanData {
   type: string;
   parameters?: Record<string, any>;
   output?: string;
+  result?: ScanResult[];
   targets: string[];
   created_at: string;
   started_at?: string;
   finished_at?: string;
 }
 
+interface ScanResult {
+  ip_address: string;
+  hostname: string;
+  status: string;
+  last_seen: string;
+  reason: string;
+  os_info: {
+    name?: string;
+    accuracy?: string;
+    classes?: Array<{
+      type: string;
+      vendor: string;
+      osfamily: string;
+      osgen: string;
+      accuracy: string;
+    }>;
+  };
+  ports: Array<{
+    port: number | null;
+    protocol: string;
+    state: string;
+    service: {
+      name?: string;
+      product?: string;
+      version?: string;
+      method?: string;
+      conf?: string;
+    };
+    scripts: Record<string, string>;
+    count?: number;
+  }>;
+  traceroute: Array<{
+    ttl: string;
+    ipaddr: string;
+    rtt: string;
+    host: string;
+  }>;
+  ssl_info: Record<string, any>;
+  http_headers: Record<string, any>;
+}
+
 interface TargetResult {
   target: string;
+  hostname: string;
   os: string;
+  traceroute: Array<{
+    ttl: string;
+    ipaddr: string;
+    rtt: string;
+    host: string;
+  }>;
   ports: {
     port: number;
     protocol: string;
     service: string;
     state: string;
+    product?: string;
+    version?: string;
   }[];
-}
-
-interface Finding {
-  id: number;
-  name: string;
-  description: string;
-  recommendation: string;
-  port: number;
-  port_state: string;
-  protocol: string;
-  service: string;
-  os: Record<string, any>;
-  traceroute: string;
-  severity: string;
-  target_id: number;
-  target?: {
-    id: number;
-    name: string;
-  };
-  created_at: string;
-  updated_at: string;
 }
 
 // Default empty state
@@ -72,10 +104,37 @@ export default function FinishedScanPage() {
   const params = useParams()
   const scanId = params.id as string
   const [scan, setScan] = useState<ScanData>(initialScanData)
-  const [findings, setFindings] = useState<Finding[]>([])
   const [targetResults, setTargetResults] = useState<TargetResult[]>([])
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const [isReportDialogOpen, setIsReportDialogOpen] = useState(false)
+
+  // Function to get default/deep scan parameters
+  const getDefaultScanParameters = (scanType: string) => {
+    if (scanType === 'default') {
+      return {
+        echo_request: true,
+        tcp_syn_scan: true,
+        tcp_ports: "top-100",
+        timing_flag: 5,
+      }
+    } else if (scanType === 'deep') {
+      return {
+        echo_request: true,
+        timestamp_request: true,
+        address_mask_request: true,
+        os_detection: true,
+        service_version: true,
+        traceroute: true,
+        ssl_scan: true,
+        http_headers: true,
+        tcp_syn_scan: true,
+        timing_flag: 3,
+        tcp_ports: "top-5000",
+        udp_ports: "top-100"
+      }
+    }
+    return {}
+  }
 
   // Fetch scan data
   useEffect(() => {
@@ -89,40 +148,43 @@ export default function FinishedScanPage() {
         const scanData = await scansAPI.getScan(scanId);
         setScan(scanData);
         
-        // Get findings for this scan using the API
-        try {
-          const findingsData = await scansAPI.getScanFindings(scanId);
-          setFindings(findingsData.data || []);
-          
-          // Process findings into target results
-          const resultsMap = new Map<string, TargetResult>();
-          
-          for (const finding of findingsData.data || []) {
-            const targetName = finding.target?.name || 'Unknown';
+        // Process scan results into target results
+        if (scanData.result && scanData.result.length > 0) {
+          const results: TargetResult[] = scanData.result.map((host: ScanResult) => {
+            const targetName = host.hostname || host.ip_address;
+            const osName = host.os_info?.name || 
+                          (host.os_info?.classes && host.os_info.classes.length > 0 
+                            ? `${host.os_info.classes[0].vendor} ${host.os_info.classes[0].osfamily} ${host.os_info.classes[0].osgen}`.trim()
+                            : 'Unknown');
             
-            if (!resultsMap.has(targetName)) {
-              resultsMap.set(targetName, {
-                target: targetName,
-                os: finding.os?.name || 'Unknown',
-                ports: []
+            // Filter out synthetic extraports entries and extract real ports
+            const realPorts = host.ports
+              .filter(port => port.port !== null)
+              .map(port => ({
+                port: port.port!,
+                protocol: port.protocol,
+                service: port.service?.name || 'unknown',
+                state: port.state,
+                product: port.service?.product,
+                version: port.service?.version
+              }))
+              // Sort ports: open first, then others
+              .sort((a, b) => {
+                if (a.state === 'open' && b.state !== 'open') return -1;
+                if (a.state !== 'open' && b.state === 'open') return 1;
+                return a.port - b.port; // Secondary sort by port number
               });
-            }
             
-            // Add port information if it's a port finding
-            if (finding.port) {
-              const targetResult = resultsMap.get(targetName)!;
-              targetResult.ports.push({
-                port: finding.port,
-                protocol: finding.protocol || 'unknown',
-                service: finding.service || 'unknown',
-                state: finding.port_state || 'unknown'
-              });
-            }
-          }
+            return {
+              target: targetName,
+              hostname: host.hostname,
+              os: osName,
+              traceroute: host.traceroute || [],
+              ports: realPorts
+            };
+          });
           
-          setTargetResults(Array.from(resultsMap.values()));
-        } catch (findingsErr) {
-          console.error('Error fetching findings:', findingsErr);
+          setTargetResults(results);
         }
       } catch (err) {
         console.error('Error fetching scan data:', err);
@@ -149,6 +211,20 @@ export default function FinishedScanPage() {
     setIsReportDialogOpen(false)
   }
 
+  // Function to get port state badge variant and color
+  const getPortStateBadge = (state: string) => {
+    switch (state.toLowerCase()) {
+      case 'open':
+        return { variant: 'default', className: 'bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800/30 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-950/30' };
+      case 'closed':
+        return { variant: 'default', className: 'bg-red-500 hover:bg-red-600 text-white' };
+      case 'filtered':
+      case 'unknown':
+      default:
+        return { variant: 'secondary', className: '' };
+    }
+  }
+
   // Show loading state
   if (isLoading) {
     return (
@@ -166,7 +242,7 @@ export default function FinishedScanPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">{scan.name}</h1>
-          <p className="text-muted-foreground">Scan completed on {new Date(scan.finished_at).toLocaleString()}</p>
+          <p className="text-muted-foreground">Scan completed on {formatToBucharestTime(scan.finished_at)}</p>
         </div>
         <Button onClick={() => setIsReportDialogOpen(true)}>
           <FileText className="mr-2 h-4 w-4" />
@@ -179,7 +255,7 @@ export default function FinishedScanPage() {
           <CardTitle>Scan Summary</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
             <div>
               <p className="text-sm font-medium text-muted-foreground">Status</p>
               <p className="mt-1 flex items-center">
@@ -189,18 +265,26 @@ export default function FinishedScanPage() {
               </p>
             </div>
             <div>
+              <p className="text-sm font-medium text-muted-foreground">Scan Type</p>
+              <p className="mt-1">
+                <Badge variant="outline">
+                  {scan.type?.charAt(0).toUpperCase() + scan.type?.slice(1) || 'Unknown'}
+                </Badge>
+              </p>
+            </div>
+            <div>
               <p className="text-sm font-medium text-muted-foreground">Start Time</p>
-              <p className="mt-1">{scan.started_at ? new Date(scan.started_at).toLocaleString() : 'N/A'}</p>
+              <p className="mt-1">{formatToBucharestTime(scan.started_at)}</p>
             </div>
             <div>
               <p className="text-sm font-medium text-muted-foreground">End Time</p>
-              <p className="mt-1">{scan.finished_at ? new Date(scan.finished_at).toLocaleString() : 'N/A'}</p>
+              <p className="mt-1">{formatToBucharestTime(scan.finished_at)}</p>
             </div>
             <div>
               <p className="text-sm font-medium text-muted-foreground">Duration</p>
               <p className="mt-1">
                 {scan.started_at && scan.finished_at 
-                  ? Math.round((new Date(scan.finished_at).getTime() - new Date(scan.started_at).getTime()) / 60000) + ' minutes'
+                  ? formatDuration(scan.started_at, scan.finished_at)
                   : 'N/A'}
               </p>
             </div>
@@ -210,10 +294,25 @@ export default function FinishedScanPage() {
 
       <Tabs defaultValue="results">
         <TabsList>
+          <TabsTrigger value="parameters">Parameters</TabsTrigger>
           <TabsTrigger value="results">Results</TabsTrigger>
-          <TabsTrigger value="nmap">Nmap Output</TabsTrigger>
+          <TabsTrigger value="nmap">Console</TabsTrigger>
           <TabsTrigger value="targets">Targets</TabsTrigger>
         </TabsList>
+        <TabsContent value="parameters">
+          <Card>
+            <CardHeader>
+              <CardTitle>Scan Parameters</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ParameterSection
+                parameters={scan.type === 'custom' 
+                  ? scan.parameters 
+                  : getDefaultScanParameters(scan.type || '')}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
         <TabsContent value="results">
           <Card>
             <CardHeader>
@@ -224,16 +323,37 @@ export default function FinishedScanPage() {
                 targetResults.map((result, index) => (
                   <div key={index} className="mb-6 last:mb-0">
                     <h3 className="text-lg font-medium mb-2">{result.target}</h3>
+                    {result.hostname && result.hostname !== result.target && (
+                      <div className="mb-2">
+                        <span className="text-sm font-medium text-muted-foreground mr-2">Hostname:</span>
+                        <span>{result.hostname}</span>
+                      </div>
+                    )}
                     <div className="mb-2">
                       <span className="text-sm font-medium text-muted-foreground mr-2">OS:</span>
                       <span>{result.os}</span>
                     </div>
+                    {result.traceroute && result.traceroute.length > 0 && (
+                      <div className="mb-4">
+                        <span className="text-sm font-medium text-muted-foreground mr-2">Traceroute:</span>
+                        <div className="mt-2 bg-zinc-50 dark:bg-zinc-900 p-3 rounded-md">
+                          <div className="font-mono text-xs space-y-1">
+                            {result.traceroute.map((hop, hopIndex) => (
+                              <div key={hopIndex}>
+                                {hop.ttl}. {hop.ipaddr} ({hop.rtt}ms) {hop.host && `(${hop.host})`}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     <Table>
                       <TableHeader>
                         <TableRow>
                           <TableHead>Port</TableHead>
                           <TableHead>Protocol</TableHead>
                           <TableHead>Service</TableHead>
+                          <TableHead>Product</TableHead>
                           <TableHead>State</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -243,8 +363,14 @@ export default function FinishedScanPage() {
                             <TableCell>{port.port}</TableCell>
                             <TableCell>{port.protocol}</TableCell>
                             <TableCell>{port.service}</TableCell>
+                            <TableCell>{port.product && port.version ? `${port.product} ${port.version}` : port.product || '-'}</TableCell>
                             <TableCell>
-                              <Badge variant={port.state === "open" ? "success" : "secondary"}>{port.state}</Badge>
+                              <Badge 
+                                variant={getPortStateBadge(port.state).variant as any}
+                                className={getPortStateBadge(port.state).className}
+                              >
+                                {port.state}
+                              </Badge>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -265,14 +391,14 @@ export default function FinishedScanPage() {
         <TabsContent value="nmap">
           <Card>
             <CardHeader>
-              <CardTitle>Nmap Output</CardTitle>
+              <CardTitle>Console</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="bg-zinc-950 dark:bg-zinc-900 text-green-400 font-mono text-sm p-4 rounded-md h-[400px] overflow-auto whitespace-pre-wrap">
                 {scan.output || (
                   <div className="flex items-center justify-center h-full text-muted-foreground">
                     <div className="text-center">
-                      <p>No Nmap output available</p>
+                      <p>No Console output available</p>
                     </div>
                   </div>
                 )}
@@ -291,7 +417,9 @@ export default function FinishedScanPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Target</TableHead>
+                      <TableHead>Hostname</TableHead>
                       <TableHead>Open Ports</TableHead>
+                      <TableHead>Total Discovered Ports</TableHead>
                       <TableHead>OS</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -299,7 +427,9 @@ export default function FinishedScanPage() {
                     {targetResults.map((result, index) => (
                       <TableRow key={index}>
                         <TableCell>{result.target}</TableCell>
+                        <TableCell>{result.hostname || '-'}</TableCell>
                         <TableCell>{result.ports.filter((p) => p.state === "open").length}</TableCell>
+                        <TableCell>{result.ports.length}</TableCell>
                         <TableCell>{result.os}</TableCell>
                       </TableRow>
                     ))}

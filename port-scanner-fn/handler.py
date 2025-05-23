@@ -106,6 +106,7 @@ def handle(event, _):
                 echo_request=args.echo_request,
                 timestamp_request=args.timestamp_request,
                 address_mask_request=args.address_mask_request,
+                timing_flag=args.timing_flag,
                 os_detection=args.os_detection,
                 service_version=args.service_version,
                 aggressive=args.aggressive,

@@ -9,7 +9,7 @@ from app.database.db import get_db
 from app.models.scan import Scan, ScanStatus
 from app.models.target import Target
 from app.models.finding import Finding, PortState, Severity
-from datetime import datetime
+from app.utils.timezone import now_utc
 
 celery_app = Celery(
     "tasks",
@@ -32,9 +32,9 @@ def update_scan_status(scan_uuid, status, db):
     
     # Update status
     if status == ScanStatus.RUNNING and scan.status != ScanStatus.RUNNING:
-        scan.started_at = datetime.now()
+        scan.started_at = now_utc()
     elif (status == ScanStatus.COMPLETED or status == ScanStatus.FAILED) and scan.finished_at is None:
-        scan.finished_at = datetime.now()    
+        scan.finished_at = now_utc()    
         # When scan completes or fails, also send a final progress=100 to the websocket
         # This ensures the frontend progress bar always reaches 100%
         try:
@@ -100,26 +100,32 @@ def watch_scan(scan_uuid):
             
             # Check for scan results in Redis and update the database
             scan_results_data = r.get(results_key)
+            log.info(f"Scan results data: {scan_results_data}")
             if scan_results_data:
                 try:
                     scan_results = json.loads(scan_results_data)
+
+                    # Store the raw scan results in the scan.result column
+                    scan.result = json.dumps(scan_results)
+                    log.info(f"Stored scan results in scan.result for scan {scan_uuid}")
 
                     new_findings_count = 0
 
                     for host in scan_results:
                         ip_addr = host.get("ip_address")
-                        if not ip_addr:
+                        hostname = host.get("hostname")
+                        if not ip_addr and not hostname:
                             continue
 
                         # Get or create the corresponding target for this host
                         target = (
                             db.query(Target)
-                            .filter_by(user_id=scan.user_id, name=ip_addr)
+                            .filter_by(user_id=scan.user_id, name=ip_addr or hostname)
                             .first()
                         )
 
                         if not target:
-                            target = Target(user_id=scan.user_id, name=ip_addr)
+                            target = Target(user_id=scan.user_id, name=ip_addr or hostname)
                             db.add(target)
                             db.flush()  # Ensures target.id is populated
 
@@ -129,6 +135,10 @@ def watch_scan(scan_uuid):
 
                         # Persist port findings (one finding per open/filtered port)
                         for port_info in host.get("ports", []):
+                            # Skip the synthetic extraports entries
+                            if port_info.get("port") is None:
+                                continue
+                                
                             try:
                                 port_number = int(port_info.get("port", 0)) if port_info.get("port") else None
                             except ValueError:
@@ -147,14 +157,14 @@ def watch_scan(scan_uuid):
                                 service_name = port_info.get("service", {}).get("name", "")
 
                             finding = Finding(
-                                name=f"{ip_addr}:{port_number}/{protocol}" if port_number else ip_addr,
+                                name=f"{hostname or ip_addr}:{port_number}/{protocol}" if port_number else hostname or ip_addr,
                                 description="",
                                 recommendation="",
                                 port=port_number,
                                 port_state=port_state,
                                 protocol=protocol,
                                 service=service_name,
-                                os=host.get("os_info", {}).get("name", ""),
+                                os=host.get("os_info", {}),
                                 traceroute=json.dumps(host.get("traceroute", [])),
                                 severity=Severity.INFO,
                                 target=target,

@@ -1,7 +1,7 @@
 from pydantic import BaseModel, EmailStr, constr, ConfigDict
 from datetime import datetime
 from typing import Optional, List
-from zoneinfo import ZoneInfo
+from app.utils.timezone import format_iso_bucharest, ensure_timezone
 
 
 class UserBase(BaseModel):
@@ -21,7 +21,7 @@ class UserInDB(UserBase):
     model_config = ConfigDict(
         from_attributes=True,
         json_encoders={
-            datetime: lambda dt: dt.astimezone(ZoneInfo("Europe/Bucharest")).isoformat()
+            datetime: lambda dt: format_iso_bucharest(ensure_timezone(dt)) if dt else None
         }
     )
 
@@ -32,3 +32,10 @@ class UserOut(UserBase):
     created_at: datetime
     targets: Optional[List] = []
     scans: Optional[List] = []
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={
+            datetime: lambda dt: format_iso_bucharest(ensure_timezone(dt)) if dt else None
+        }
+    )

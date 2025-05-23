@@ -6,8 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ColorProgressBar } from "@/components/color-progress-bar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import { Loader2 } from "lucide-react"
+import { Loader2, Clock, Calendar, Target } from "lucide-react"
 import { scansAPI } from "@/lib/api"
+import { formatToBucharestTime, formatElapsedTime } from "@/lib/timezone"
+import { ParameterSection } from "@/components/parameter-section"
 
 // Type for scan data
 interface ScanData {
@@ -20,6 +22,7 @@ interface ScanData {
   created_at: string;
   started_at?: string;
   finished_at?: string;
+  name?: string;
 }
 
 const initialScanData: ScanData = {
@@ -42,7 +45,19 @@ export default function PendingRunningScanPage() {
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const [redirecting, setRedirecting] = useState<boolean>(false)
   const [statusPolling, setStatusPolling] = useState<NodeJS.Timeout | null>(null)
+  const [elapsedTime, setElapsedTime] = useState<string>("0s")
   const outputRef = useRef<HTMLDivElement>(null)
+
+  // Real-time cronometer effect using timezone utility
+  useEffect(() => {
+    if (!scan.started_at) return;
+    
+    const interval = setInterval(() => {
+      setElapsedTime(formatElapsedTime(scan.started_at));
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, [scan.started_at]);
 
   // Fetch initial scan data from the API
   useEffect(() => {
@@ -108,8 +123,12 @@ export default function PendingRunningScanPage() {
         if (message.type === "progress") {
           const value = Number(message.value)
           if (!isNaN(value)) {
-            // Make sure the progress bar never decreases
             setProgress((prev: number) => (value > prev ? value : prev))
+            
+            // If progress > 0 and we don't have a start time, refresh scan data
+            if (value > 0 && !scan.started_at) {
+              refreshScanData();
+            }
           }
         } else if (message.type === "output") {
           setNmapOutput((prev: string) => prev + message.value + "\n")
@@ -133,6 +152,21 @@ export default function PendingRunningScanPage() {
     }
   }, [scanId])
 
+  // Function to refresh scan data (for start time updates)
+  const refreshScanData = async () => {
+    try {
+      const data = await scansAPI.getScan(scanId);
+      setScan(prev => ({
+        ...prev,
+        started_at: data.started_at,
+        status: data.status,
+        name: data.name
+      }));
+    } catch (err) {
+      console.error('Error refreshing scan data:', err);
+    }
+  };
+
   // Poll the status endpoint to check for completion
   const startStatusPolling = () => {
     // Cancel any existing polling
@@ -146,6 +180,11 @@ export default function PendingRunningScanPage() {
         
         // Update the scan status in our local state
         setScan(prev => ({ ...prev, status: data.status }));
+        
+        // If status changed to running and we don't have start time, refresh full scan data
+        if (data.status === "running" && !scan.started_at) {
+          refreshScanData();
+        }
         
         // If scan is complete or failed, handle redirect
         if (data.status === "completed" || data.status === "failed") {
@@ -183,7 +222,9 @@ export default function PendingRunningScanPage() {
       <div>
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Running Scan</h1>
+            <h1 className="text-3xl font-bold tracking-tight">
+              {scan.status === "running" ? "Running" : "Pending"} {scan.name || "Scan"}
+            </h1>
             <p className="text-muted-foreground">Monitoring scan progress in real-time</p>
           </div>
           {redirecting && (
@@ -222,26 +263,48 @@ export default function PendingRunningScanPage() {
               <ColorProgressBar value={progress} max={100} className="h-2" />
             </div>
 
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="text-muted-foreground">Start Time:</span>
-                <span className="ml-2">{scan.started_at ? new Date(scan.started_at).toLocaleString() : 'Not started'}</span>
+            <div className="grid grid-cols-3 gap-4 text-sm">
+              <div className="flex items-center">
+                <Calendar className="h-3 w-3 text-muted-foreground mr-1" />
+                <span className="text-muted-foreground mr-2">Start Time:</span>
+                <span>{scan.started_at ? formatToBucharestTime(scan.started_at) : 'Not started'}</span>
               </div>
-              <div>
-                <span className="text-muted-foreground">Targets:</span>
-                <span className="ml-2">{scan.targets.length}</span>
+              <div className="flex items-center">
+                <Target className="h-3 w-3 text-muted-foreground mr-1" />
+                <span className="text-muted-foreground mr-2">Targets:</span>
+                <span>{scan.targets.length}</span>
               </div>
+              {scan.started_at && (
+                <div className="flex items-center">
+                  <Clock className="h-3 w-3 text-muted-foreground mr-1" />
+                  <span className="text-muted-foreground mr-2">Elapsed:</span>
+                  <span>{elapsedTime}</span>
+                </div>
+              )}
             </div>
           </div>
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="output">
+      <Tabs defaultValue="console">
         <TabsList>
-          <TabsTrigger value="output">Nmap Output</TabsTrigger>
-          <TabsTrigger value="results">Scan Results</TabsTrigger>
+          <TabsTrigger value="parameters">Parameters</TabsTrigger>
+          <TabsTrigger value="console">Console</TabsTrigger>
+          <TabsTrigger value="results">Results</TabsTrigger>
         </TabsList>
-        <TabsContent value="output">
+        <TabsContent value="parameters">
+          <Card>
+            <CardHeader>
+              <CardTitle>Scan Parameters</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ParameterSection
+                parameters={scan.type === 'custom' ? scan.parameters : getDefaultScanParameters(scan.type || '')}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="console">
           <Card>
             <CardHeader>
               <CardTitle>Console</CardTitle>
@@ -274,4 +337,32 @@ export default function PendingRunningScanPage() {
       </Tabs>
     </div>
   )
+}
+
+// Function to get default/deep scan parameters
+const getDefaultScanParameters = (scanType: string) => {
+  if (scanType === 'default') {
+    return {
+      echo_request: true,
+      tcp_syn_scan: true,
+      tcp_ports: "top-100",
+      timing_flag: 5,
+    }
+  } else if (scanType === 'deep') {
+    return {
+      echo_request: true,
+      timestamp_request: true,
+      address_mask_request: true,
+      os_detection: true,
+      service_version: true,
+      traceroute: true,
+      ssl_scan: true,
+      http_headers: true,
+      tcp_syn_scan: true,
+      timing_flag: 3,
+      tcp_ports: "top-5000",
+      udp_ports: "top-100"
+    }
+  }
+  return {}
 }

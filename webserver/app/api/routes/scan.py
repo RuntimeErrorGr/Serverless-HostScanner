@@ -4,7 +4,6 @@ import json
 import redis
 import requests
 
-from datetime import datetime
 from fastapi import APIRouter, Depends, Request, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi_keycloak import OIDCUser
 from sqlalchemy.orm import Session
@@ -21,6 +20,7 @@ from app.models.scan import Scan, ScanStatus, ScanType
 from app.models.user import User
 from app.tasks import watch_scan
 from app.models.finding import Finding
+from app.utils.timezone import now_utc
 
 router = APIRouter()
 
@@ -79,15 +79,16 @@ async def websocket_scan(websocket: WebSocket, scan_uuid: str):
     sent_messages = set()  # Track sent messages to avoid duplicates
     FLUSH_LINES = 20
     FLUSH_INTERVAL = 0.2
-    last_flush = datetime.now()
+    last_flush = now_utc()
     
     try:
         while True:
             message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=5.0)
-            
+            log.info(f"Message: {message}")
             if message and message['type'] == 'message':
                 channel = message['channel'].decode()
                 msg_text = message['data'].decode()
+                log.info(f"Received message: {msg_text}")
                 
                 if channel == f"{scan_uuid}:progress":
                     # Send progress update as a special message type
@@ -101,21 +102,22 @@ async def websocket_scan(websocket: WebSocket, scan_uuid: str):
                         log.error(f"Invalid progress value received: {msg_text}")
                 else:
                     # Regular scan output handling
-                    if "Read data files from" in msg_text or msg_text in sent_messages:
+                    if msg_text in sent_messages:
                         continue
                     
                     buffer.append(msg_text)
                     sent_messages.add(msg_text)
+                    log.info(f"Sending message: {msg_text}")
                     await websocket.send_json({
                         "type": "output",
                         "value": msg_text
                     })
                 
             # Flush if enough lines or enough time has passed
-            if buffer and (len(buffer) >= FLUSH_LINES or datetime.now() - last_flush > timedelta(seconds=FLUSH_INTERVAL)):
+            if buffer and (len(buffer) >= FLUSH_LINES or now_utc() - last_flush > timedelta(seconds=FLUSH_INTERVAL)):
                 write_buffer(scan_uuid, db, buffer)
                 buffer.clear()
-                last_flush = datetime.now()
+                last_flush = now_utc()
                 
                 # Periodically clean up sent_messages to prevent memory growth
                 if len(sent_messages) > 5000:
@@ -229,12 +231,23 @@ def get_scan_by_uuid(
     # Get the target names
     target_names = [target.name for target in scan.targets]
     
+    # Parse scan results if available
+    scan_results = []
+    if scan.result:
+        try:
+            scan_results = json.loads(scan.result)
+        except json.JSONDecodeError:
+            log.error(f"Invalid JSON in scan.result for scan {scan_uuid}")
+            scan_results = []
+    
     return {
         "scan_uuid": scan.uuid,
+        "name": scan.name,
         "status": scan.status.value if scan.status else None,
         "type": scan.type.value if scan.type else None,
         "parameters": scan.parameters,
         "output": scan.output,
+        "result": scan_results,
         "targets": target_names,
         "created_at": scan.created_at,
         "started_at": scan.started_at,
@@ -319,8 +332,8 @@ def get_findings_by_scan_uuid(
 
 
 def create_scan_entry(inserted_targets, db_user, payload, db):
-    scan_type = payload.get("scan_type")
-    scan_options = payload.get("scan_options")
+    scan_type = payload.get("scan_type", ScanType.DEFAULT)
+    scan_options = payload.get("scan_options", {})
     scan_uuid = payload.get("scan_id")
     targets = payload.get("targets", [])
     
@@ -329,7 +342,7 @@ def create_scan_entry(inserted_targets, db_user, payload, db):
     if len(targets) > 3:
         target_summary += f" and {len(targets) - 3} more"
     
-    scan_name = f"Scan of {target_summary} - {scan_type}"
+    scan_name = f"Scan results for {target_summary}"
 
     new_scan = Scan(
         user_id=db_user.id,

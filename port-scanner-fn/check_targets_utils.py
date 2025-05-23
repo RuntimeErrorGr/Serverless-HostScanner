@@ -350,7 +350,7 @@ class CheckTargetsOptions:
             http_headers=True,
             tcp_syn_scan=True,
             timing_flag=3,
-            tcp_ports="top-1000",
+            tcp_ports="top-5000",
             udp_ports="top-100"
         )
 
@@ -412,6 +412,7 @@ class CheckTargetsConfig:
                 [
                     "nmap",
                     "-n",
+                    "-vvv",
                     "--reason",
                     "-PS21,22,23,25,53,80,110,143,443,3306,3343,3389,5060,5900,6379,8080,9443",
                     "-PU53,67,123",

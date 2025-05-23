@@ -250,7 +250,7 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
     // If default scan, set minimal options
     else if (values.scanType === 'default') {
       finalValues.detectionTechnique = 'syn';
-      finalValues.tcpTopPorts = '1000';
+      finalValues.tcpTopPorts = '100';
       finalValues.hostDiscoveryProbes = ['echo'];
       finalValues.timing = 'T5';
       if (!finalValues.portTypes?.includes('tcp')) {
@@ -354,8 +354,8 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                                 className="w-72 p-3 text-sm"
                               >
                                 <p>
-                                  Basic scan that checks the most common 1000 ports. Fast and suitable for most
-                                  scenarios. Duration: 1-5 minutes per target.
+                                  Basic scan that checks the most common 100 ports. Fast and suitable for most
+                                  scenarios. Duration: around 10 seconds per target.
                                 </p>
                               </TooltipContent>
                             </Tooltip>
@@ -424,56 +424,32 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                     <TabsContent value="ports" className="space-y-4">
                       <FormField
                         control={form.control}
-                        name="portTypes"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Port Types</FormLabel>
-                            <div className="flex flex-col space-y-2">
-                              <FormItem className="flex items-center space-x-3 space-y-0">
-                                <FormControl>
-                                  <Checkbox
-                                    checked={field.value?.includes("tcp")}
-                                    disabled={tcpDisabled}
-                                    onCheckedChange={(checked) => {
-                                      const current = field.value || []
-                                      if (checked) {
-                                        field.onChange([...current, "tcp"])
-                                      } else {
-                                        field.onChange(current.filter((value) => value !== "tcp"))
-                                      }
-                                    }}
-                                  />
-                                </FormControl>
-                                <FormLabel className="font-normal">TCP</FormLabel>
-                              </FormItem>
-                              <FormItem className="flex items-center space-x-3 space-y-0">
-                                <FormControl>
-                                  <Checkbox
-                                    checked={field.value?.includes("udp")}
-                                    disabled={udpDisabled}
-                                    onCheckedChange={(checked) => {
-                                      const current = field.value || []
-                                      if (checked) {
-                                        field.onChange([...current, "udp"])
-                                      } else {
-                                        field.onChange(current.filter((value) => value !== "udp"))
-                                      }
-                                    }}
-                                  />
-                                </FormControl>
-                                <FormLabel className="font-normal">UDP</FormLabel>
-                              </FormItem>
-                            </div>
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={form.control}
                         name="tcpPorts"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>TCP Ports</FormLabel>
+                            <div className="flex items-center space-x-3">
+                              <FormField
+                                control={form.control}
+                                name="portTypes"
+                                render={({ field: portTypesField }) => (
+                                  <FormControl>
+                                    <Checkbox
+                                      checked={portTypesField.value?.includes("tcp")}
+                                      disabled={tcpDisabled}
+                                      onCheckedChange={(checked) => {
+                                        const current = portTypesField.value || []
+                                        if (checked) {
+                                          portTypesField.onChange([...current, "tcp"])
+                                        } else {
+                                          portTypesField.onChange(current.filter((value) => value !== "tcp"))
+                                        }
+                                      }}
+                                    />
+                                  </FormControl>
+                                )}
+                              />
+                              <FormLabel>TCP Ports</FormLabel>
+                            </div>
                             <div className="space-y-2">
                               <div className="relative">
                                 <FormControl>
@@ -509,7 +485,7 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                                       <SelectValue placeholder="Or select top ports" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      <SelectItem value="disabled">Disabled</SelectItem>
+                                      <SelectItem value="disabled">---</SelectItem>
                                       <SelectItem value="10">Top 10 ports</SelectItem>
                                       <SelectItem value="100">Top 100 ports</SelectItem>
                                       <SelectItem value="1000">Top 1000 ports</SelectItem>
@@ -532,7 +508,29 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                         name="udpPorts"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>UDP Ports</FormLabel>
+                            <div className="flex items-center space-x-3">
+                              <FormField
+                                control={form.control}
+                                name="portTypes"
+                                render={({ field: portTypesField }) => (
+                                  <FormControl>
+                                    <Checkbox
+                                      checked={portTypesField.value?.includes("udp")}
+                                      disabled={udpDisabled}
+                                      onCheckedChange={(checked) => {
+                                        const current = portTypesField.value || []
+                                        if (checked) {
+                                          portTypesField.onChange([...current, "udp"])
+                                        } else {
+                                          portTypesField.onChange(current.filter((value) => value !== "udp"))
+                                        }
+                                      }}
+                                    />
+                                  </FormControl>
+                                )}
+                              />
+                              <FormLabel>UDP Ports</FormLabel>
+                            </div>
                             <div className="space-y-2">
                               <div className="relative">
                                 <FormControl>
@@ -568,7 +566,7 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                                       <SelectValue placeholder="Or select top ports" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      <SelectItem value="disabled">Disabled</SelectItem>
+                                      <SelectItem value="disabled">---</SelectItem>
                                       <SelectItem value="10">Top 10 ports</SelectItem>
                                       <SelectItem value="100">Top 100 ports</SelectItem>
                                       <SelectItem value="1000">Top 1000 ports</SelectItem>

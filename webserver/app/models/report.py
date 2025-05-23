@@ -1,7 +1,7 @@
 from sqlalchemy import Column, String, Integer, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
 from app.database.base_class import Base
-from datetime import datetime
+from app.utils.timezone import now_utc
 from sqlalchemy import Enum as SqlEnum
 from enum import Enum
 
@@ -24,8 +24,8 @@ class Report(Base):
     status = Column(SqlEnum(ReportStatus), default=ReportStatus.PENDING)
     url = Column(String(255))
     type = Column(SqlEnum(ReportType), default=ReportType.PDF)
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
     last_downloaded_at = Column(DateTime)
 
     scan_id = Column(Integer, ForeignKey('scans.id', ondelete="CASCADE"))

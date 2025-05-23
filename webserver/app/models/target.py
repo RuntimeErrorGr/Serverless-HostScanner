@@ -1,7 +1,7 @@
 from sqlalchemy import Column, String, Integer, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
 from app.database.base_class import Base
-from datetime import datetime
+from app.utils.timezone import now_utc
 from app.models.scan import scan_target_association
 
 class Target(Base):
@@ -10,8 +10,8 @@ class Target(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(255))
     user_id = Column(Integer, ForeignKey('users.id'))
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
 
     user = relationship("User", back_populates="targets")
     findings = relationship("Finding", back_populates="target", cascade="all, delete-orphan")

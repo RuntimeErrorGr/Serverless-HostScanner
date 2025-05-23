@@ -55,13 +55,45 @@ class CheckTargets:
         
         # Message throttling
         self.last_status_message_time = 0
-        self.STATUS_MESSAGE_INTERVAL = 10  # seconds
+        self.STATUS_MESSAGE_INTERVAL = 8
 
     def _calculate_phase_weights(self) -> dict:
-        """Calculate weights for different scan phases based on enabled options."""
+        """Calculate weights for different scan phases based on enabled options and port counts."""
+        
+        # Helper function to extract port count from port specification
+        def get_port_count(port_spec):
+            if not port_spec:
+                return 0
+            if isinstance(port_spec, str):
+                if port_spec.startswith('top-'):
+                    return int(port_spec.replace('top-', ''))
+                elif ',' in port_spec:
+                    # Count individual ports and ranges
+                    parts = port_spec.split(',')
+                    count = 0
+                    for part in parts:
+                        if '-' in part and not part.startswith('top-'):
+                            start, end = part.split('-')
+                            count += int(end) - int(start) + 1
+                        else:
+                            count += 1
+                    return count
+                elif '-' in port_spec:
+                    # Single range
+                    start, end = port_spec.split('-')
+                    return int(end) - int(start) + 1
+                else:
+                    return 1  # Single port
+            return 0
+        
+        # Get port counts
+        tcp_port_count = get_port_count(getattr(self.config, 'tcp_ports', None))
+        udp_port_count = get_port_count(getattr(self.config, 'udp_ports', None))
+        
+        # Base weights
         weights = {
             'host_discovery': 5,
-            'tcp_scan': 25,
+            'tcp_scan': 0,
             'udp_scan': 0,
             'os_detection': 0,
             'service_detection': 0,
@@ -69,31 +101,60 @@ class CheckTargets:
         }
         
         # Check scan options from config
+        has_tcp = hasattr(self.config, 'tcp_ports') and self.config.tcp_ports
         has_udp = hasattr(self.config, 'udp_ports') and self.config.udp_ports
         has_os_detection = hasattr(self.config, 'os_detection') and self.config.os_detection
         has_service_detection = hasattr(self.config, 'service_version') and self.config.service_version
         has_scripts = (hasattr(self.config, 'ssl_scan') and self.config.ssl_scan) or \
                      (hasattr(self.config, 'http_headers') and self.config.http_headers)
         
-        # Adjust weights based on enabled features
-        if has_udp:
-            weights['udp_scan'] = 35
-            weights['tcp_scan'] = 20  # Reduce TCP weight when UDP is enabled
+        # Calculate TCP scan weight based on port count
+        if has_tcp and tcp_port_count > 0:
+            # Base weight of 15, plus scaling factor based on port count
+            if tcp_port_count <= 100:
+                weights['tcp_scan'] = 5
+            elif tcp_port_count <= 1000:
+                weights['tcp_scan'] = 10
+            elif tcp_port_count <= 5000:
+                weights['tcp_scan'] = 20
+            else:
+                weights['tcp_scan'] = 30  # For very large port scans
+        
+        # Calculate UDP scan weight based on port count  
+        if has_udp and udp_port_count > 0:
+            # UDP is generally slower than TCP, so higher base weight
+            if udp_port_count <= 100:
+                weights['udp_scan'] = 10
+            elif udp_port_count <= 1000:
+                weights['udp_scan'] = 20
+            else:
+                weights['udp_scan'] = 30  # UDP scans of many ports are very slow
             
         if has_os_detection:
-            weights['os_detection'] = 10
+            weights['os_detection'] = 8
             
         if has_service_detection:
-            weights['service_detection'] = 25
+            # Service detection weight also depends on number of open ports found
+            # but we'll use a reasonable base since we don't know open ports yet
+            weights['service_detection'] = 10
             
         if has_scripts:
-            weights['nse_scripts'] = 20
+            # Significantly increase script scanning weight as it can be very time-consuming
+            weights['nse_scripts'] = 50 
+            
+        # If we have many ports and scripts, scripts become even more expensive
+        total_ports = tcp_port_count + udp_port_count
+        if has_scripts and total_ports > 1000:
+            weights['nse_scripts'] = 40  # Extra weight for script scanning on many ports
             
         # Normalize weights to sum to 100
         total_weight = sum(weights.values())
         if total_weight > 0:
             for phase in weights:
                 weights[phase] = (weights[phase] / total_weight) * 100
+        else:
+            # Fallback if no scans are enabled
+            weights['host_discovery'] = 100
                 
         return weights
 
@@ -158,7 +219,7 @@ class CheckTargets:
             # Only send progress updates if there's a meaningful change (>= 1%)
             if abs(self.overall_progress - self.last_sent_progress) >= 1.0:
                 self.last_sent_progress = self.overall_progress
-                return min(self.overall_progress, 99.96)  # Cap at 99% until completion
+                return min(self.overall_progress, 95.13)  # Cap at 99% until completion
                 
         except (ValueError, IndexError):
             pass
@@ -191,19 +252,19 @@ class CheckTargets:
                 
                 # Generate phase-specific message
                 if self.current_phase == 'host_discovery':
-                    return f"🔍 Discovering live hosts... ({elapsed} elapsed)"
+                    return f"[*] Discovering live hosts... ({elapsed} elapsed)"
                 elif self.current_phase == 'tcp_scan':
-                    return f"🚀 Scanning TCP ports... ({elapsed} elapsed)"
+                    return f"[*] Scanning TCP ports... ({elapsed} elapsed)"
                 elif self.current_phase == 'udp_scan':
-                    return f"📡 Scanning UDP ports... ({elapsed} elapsed)"
+                    return f"[*] Scanning UDP ports... ({elapsed} elapsed)"
                 elif self.current_phase == 'os_detection':
-                    return f"🖥️  Detecting operating systems... ({elapsed} elapsed)"
+                    return f"[*] Detecting operating systems... ({elapsed} elapsed)"
                 elif self.current_phase == 'service_detection':
-                    return f"🔍 Identifying services and versions... ({elapsed} elapsed)"
+                    return f"[*] Identifying services and versions... ({elapsed} elapsed)"
                 elif self.current_phase == 'nse_scripts':
-                    return f"🔬 Running security scripts... ({elapsed} elapsed)"
+                    return f"[*] Running security scripts... ({elapsed} elapsed)"
                 else:
-                    return f"⚡ Scanning in progress... ({elapsed} elapsed)"
+                    return f"[*] Scanning in progress... ({elapsed} elapsed)"
             return None
             
         # Transform NSE thread messages
@@ -213,13 +274,13 @@ class CheckTargets:
         # Transform undergoing messages
         if 'undergoing' in line_lower:
             if 'syn stealth scan' in line_lower:
-                return "🚀 Performing TCP port scan..."
+                return "[*] Performing TCP port scan..."
             elif 'udp scan' in line_lower:
-                return "📡 Performing UDP port scan..."
+                return "[*] Performing UDP port scan..."
             elif 'script scan' in line_lower:
-                return "🔬 Running security analysis scripts..."
+                return "[*] Running security analysis scripts..."
             elif 'service scan' in line_lower:
-                return "🔍 Identifying running services..."
+                return "[*] Identifying running services..."
             return None
             
         # Let other meaningful messages pass through

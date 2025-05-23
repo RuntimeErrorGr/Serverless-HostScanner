@@ -8,11 +8,12 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { GenerateReportDialog } from "@/components/generate-report-dialog"
-import { FileText, Loader2 } from "lucide-react"
+import { FileText, Loader2, ChevronDown, ChevronRight } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
 import { scansAPI } from "@/lib/api"
 import { formatToBucharestTime, formatDuration } from "@/lib/timezone"
 import { ParameterSection } from "@/components/parameter-section"
+import { TracerouteSection } from "@/components/traceroute-section"
 
 // Interface for scan data from the API
 interface ScanData {
@@ -168,10 +169,24 @@ export default function FinishedScanPage() {
                 product: port.service?.product,
                 version: port.service?.version
               }))
-              // Sort ports: open first, then others
+              // Sort ports: open, open|filtered, closed, other states
               .sort((a, b) => {
-                if (a.state === 'open' && b.state !== 'open') return -1;
-                if (a.state !== 'open' && b.state === 'open') return 1;
+                const getPortPriority = (state: string) => {
+                  switch (state.toLowerCase()) {
+                    case 'open': return 1;
+                    case 'open|filtered': return 2;
+                    case 'closed': return 3;
+                    default: return 4;
+                  }
+                };
+                
+                const priorityA = getPortPriority(a.state);
+                const priorityB = getPortPriority(b.state);
+                
+                if (priorityA !== priorityB) {
+                  return priorityA - priorityB;
+                }
+                
                 return a.port - b.port; // Secondary sort by port number
               });
             
@@ -216,8 +231,10 @@ export default function FinishedScanPage() {
     switch (state.toLowerCase()) {
       case 'open':
         return { variant: 'default', className: 'bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800/30 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-950/30' };
+      case 'open|filtered':
+        return { variant: 'default', className: 'bg-amber-100 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800/50 text-amber-800 dark:text-amber-300 hover:bg-amber-150 dark:hover:bg-amber-950/40' };
       case 'closed':
-        return { variant: 'default', className: 'bg-red-500 hover:bg-red-600 text-white' };
+        return { variant: 'default', className: 'bg-red-100 dark:bg-red-950/30 border border-red-200 dark:border-red-800/40 text-red-800 dark:text-red-300 hover:bg-red-150 dark:hover:bg-red-950/40' };
       case 'filtered':
       case 'unknown':
       default:
@@ -334,18 +351,7 @@ export default function FinishedScanPage() {
                       <span>{result.os}</span>
                     </div>
                     {result.traceroute && result.traceroute.length > 0 && (
-                      <div className="mb-4">
-                        <span className="text-sm font-medium text-muted-foreground mr-2">Traceroute:</span>
-                        <div className="mt-2 bg-zinc-50 dark:bg-zinc-900 p-3 rounded-md">
-                          <div className="font-mono text-xs space-y-1">
-                            {result.traceroute.map((hop, hopIndex) => (
-                              <div key={hopIndex}>
-                                {hop.ttl}. {hop.ipaddr} ({hop.rtt}ms) {hop.host && `(${hop.host})`}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
+                      <TracerouteSection traceroute={result.traceroute} />
                     )}
                     <Table>
                       <TableHeader>

@@ -84,11 +84,9 @@ async def websocket_scan(websocket: WebSocket, scan_uuid: str):
     try:
         while True:
             message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=5.0)
-            log.info(f"Message: {message}")
             if message and message['type'] == 'message':
                 channel = message['channel'].decode()
                 msg_text = message['data'].decode()
-                log.info(f"Received message: {msg_text}")
                 
                 if channel == f"{scan_uuid}:progress":
                     # Send progress update as a special message type
@@ -107,7 +105,6 @@ async def websocket_scan(websocket: WebSocket, scan_uuid: str):
                     
                     buffer.append(msg_text)
                     sent_messages.add(msg_text)
-                    log.info(f"Sending message: {msg_text}")
                     await websocket.send_json({
                         "type": "output",
                         "value": msg_text

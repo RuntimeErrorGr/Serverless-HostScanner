@@ -293,16 +293,41 @@ export default function PendingRunningScanPage() {
           <TabsTrigger value="results">Results</TabsTrigger>
         </TabsList>
         <TabsContent value="parameters">
-          <Card>
-            <CardHeader>
-              <CardTitle>Scan Parameters</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ParameterSection
-                parameters={scan.type === 'custom' ? scan.parameters : getDefaultScanParameters(scan.type || '')}
-              />
-            </CardContent>
-          </Card>
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Scan Targets</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
+                  {scan.targets.map((target, index) => (
+                    <div
+                      key={index}
+                      className="p-3 rounded-md bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/30"
+                    >
+                      <div className="flex items-center">
+                        <Target className="h-3 w-3 text-blue-600 dark:text-blue-400 mr-2" />
+                        <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                          {target}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader>
+                <CardTitle>Scan Parameters</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ParameterSection
+                  parameters={scan.type === 'custom' ? scan.parameters : getDefaultScanParameters(scan.type || '')}
+                />
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
         <TabsContent value="console">
           <Card>

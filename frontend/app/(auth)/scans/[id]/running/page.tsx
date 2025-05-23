@@ -23,6 +23,7 @@ interface ScanData {
   started_at?: string;
   finished_at?: string;
   name?: string;
+  current_progress?: number;  // Add current progress from API
 }
 
 const initialScanData: ScanData = {
@@ -66,17 +67,22 @@ export default function PendingRunningScanPage() {
     async function fetchScanData() {
       try {
         setIsLoading(true);
-        const data = await scansAPI.getScan(scanId);
+        const scanData = await scansAPI.getScan(scanId);
         
-        setScan(data);
+        setScan(scanData);
+        
+        // Set initial progress if available from API (for page refreshes)
+        if (scanData.current_progress !== undefined) {
+          setProgress(scanData.current_progress);
+        }
         
         // Initialize output from database if it exists
-        if (data.output) {
-          setNmapOutput(data.output);
+        if (scanData.output) {
+          setNmapOutput(scanData.output);
         }
         
         // If scan is already completed or failed, set progress to 100% and redirect
-        if (data.status === "completed" || data.status === "failed") {
+        if (scanData.status === "completed" || scanData.status === "failed") {
           setProgress(100);
           // Add slight delay then redirect to results page
           handleRedirect();
@@ -206,7 +212,7 @@ export default function PendingRunningScanPage() {
       setProgress(100);
       setTimeout(() => {
         router.push(`/scans/${scanId}`);
-      }, 3200);
+      }, 1200);
     }
   };
 

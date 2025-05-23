@@ -57,29 +57,14 @@ def index(user: OIDCUser = Depends(idp.get_current_user()), db: Session = Depend
 
 @router.websocket("/ws/{scan_uuid}")
 async def websocket_scan(websocket: WebSocket, scan_uuid: str):
-
-    def write_buffer(scan_uuid, db, buffer):
-        scan = db.query(Scan).filter_by(uuid=scan_uuid).first()
-        if scan:
-            if scan.output:
-                scan.output += "\n" + "\n".join(buffer)
-            else:
-                scan.output = "\n".join(buffer)
-            db.commit()
-
     await websocket.accept()
     r = aioredis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=0)
-    db = next(get_db())
     pubsub = r.pubsub()
     # Subscribe to both main channel and progress channel
     await pubsub.subscribe(scan_uuid, f"{scan_uuid}:progress")
     log.info(f"Subscribed to scan_uuid: {scan_uuid} and progress channel")
 
-    buffer = []
     sent_messages = set()  # Track sent messages to avoid duplicates
-    FLUSH_LINES = 20
-    FLUSH_INTERVAL = 0.2
-    last_flush = now_utc()
     
     try:
         while True:
@@ -103,39 +88,26 @@ async def websocket_scan(websocket: WebSocket, scan_uuid: str):
                     if msg_text in sent_messages:
                         continue
                     
-                    buffer.append(msg_text)
                     sent_messages.add(msg_text)
+                    log.info(f"Sending message: {msg_text}")
                     await websocket.send_json({
                         "type": "output",
                         "value": msg_text
                     })
                 
-            # Flush if enough lines or enough time has passed
-            if buffer and (len(buffer) >= FLUSH_LINES or now_utc() - last_flush > timedelta(seconds=FLUSH_INTERVAL)):
-                write_buffer(scan_uuid, db, buffer)
-                buffer.clear()
-                last_flush = now_utc()
-                
                 # Periodically clean up sent_messages to prevent memory growth
                 if len(sent_messages) > 5000:
                     sent_messages = set(list(sent_messages)[-2000:])
                     
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.1)
     except WebSocketDisconnect:
-        # Final flush on disconnect
-        if buffer:
-           write_buffer(scan_uuid, db, buffer)
-        log.info(f"Unsubscribed from scan_uuid: {scan_uuid}")
-        await pubsub.unsubscribe(scan_uuid, f"{scan_uuid}:progress")
-        await pubsub.close()
-        await r.close()
-        db.close()
+        log.info(f"WebSocket disconnected for scan_uuid: {scan_uuid}")
     except Exception as e:
         log.error(f"Error in websocket_scan: {e}")
+    finally:
         await pubsub.unsubscribe(scan_uuid, f"{scan_uuid}:progress")
         await pubsub.close()
         await r.close()
-        db.close()
 
 
 @router.post("/hook")
@@ -237,19 +209,49 @@ def get_scan_by_uuid(
             log.error(f"Invalid JSON in scan.result for scan {scan_uuid}")
             scan_results = []
     
-    return {
+    # Get current progress from Redis if scan is running
+    current_progress = None
+    current_output = scan.output  # Default to database output
+    
+    if scan.status.value in ["pending", "running"]:
+        try:
+            r = redis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=0)
+            
+            # Get current progress
+            progress_key = f"scan_progress:{scan_uuid}"
+            progress_value = r.get(progress_key)
+            if progress_value:
+                current_progress = float(progress_value.decode())
+            
+            # Get current output from Redis (more up-to-date than database during scan)
+            output_key = f"scan_output:{scan_uuid}"
+            redis_output_lines = r.lrange(output_key, 0, -1)
+            if redis_output_lines:
+                current_output = "\n".join([line.decode() if isinstance(line, bytes) else line for line in redis_output_lines])
+            
+            r.close()
+        except Exception as e:
+            log.warning(f"Could not fetch real-time data for scan {scan_uuid}: {e}")
+    
+    response = {
         "scan_uuid": scan.uuid,
         "name": scan.name,
         "status": scan.status.value if scan.status else None,
         "type": scan.type.value if scan.type else None,
         "parameters": scan.parameters,
-        "output": scan.output,
+        "output": current_output,  # Use real-time output when available
         "result": scan_results,
         "targets": target_names,
         "created_at": scan.created_at,
         "started_at": scan.started_at,
         "finished_at": scan.finished_at
     }
+    
+    # Add current progress if available
+    if current_progress is not None:
+        response["current_progress"] = current_progress
+    
+    return response
 
 
 @router.get("/{scan_uuid}/status")

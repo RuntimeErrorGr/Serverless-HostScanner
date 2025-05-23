@@ -5,6 +5,7 @@ This script handles the process of checking responding targets.
 import argparse
 import logging
 import os
+import random
 import xml.etree.ElementTree as ET
 from ipaddress import IPv4Network
 import json
@@ -16,6 +17,7 @@ from .check_targets_utils import (
     get_responding_urls,
     is_netblock_cidr,
     Host,
+    calculate_number_of_targets,
 )
 
 
@@ -58,104 +60,46 @@ class CheckTargets:
         self.STATUS_MESSAGE_INTERVAL = 8
 
     def _calculate_phase_weights(self) -> dict:
-        """Calculate weights for different scan phases based on enabled options and port counts."""
-        
-        # Helper function to extract port count from port specification
-        def get_port_count(port_spec):
-            if not port_spec:
-                return 0
-            if isinstance(port_spec, str):
-                if port_spec.startswith('top-'):
-                    return int(port_spec.replace('top-', ''))
-                elif ',' in port_spec:
-                    # Count individual ports and ranges
-                    parts = port_spec.split(',')
-                    count = 0
-                    for part in parts:
-                        if '-' in part and not part.startswith('top-'):
-                            start, end = part.split('-')
-                            count += int(end) - int(start) + 1
-                        else:
-                            count += 1
-                    return count
-                elif '-' in port_spec:
-                    # Single range
-                    start, end = port_spec.split('-')
-                    return int(end) - int(start) + 1
-                else:
-                    return 1  # Single port
-            return 0
-        
-        # Get port counts
-        tcp_port_count = get_port_count(getattr(self.config, 'tcp_ports', None))
-        udp_port_count = get_port_count(getattr(self.config, 'udp_ports', None))
-        
-        # Base weights
+        """Identify enabled scan phases and assign equal weight to each."""
+
+        self.enabled_phases: list[str] = []  # Store for later use in progress calculation
+
+        # Host discovery is always enabled
+        self.enabled_phases.append("host_discovery")
+
+        # Dynamically add phases depending on scan options
+        if getattr(self.config, "tcp_ports", None):
+            self.enabled_phases.append("tcp_scan")
+
+        if getattr(self.config, "udp_ports", None):
+            self.enabled_phases.append("udp_scan")
+
+        if getattr(self.config, "os_detection", False):
+            self.enabled_phases.append("os_detection")
+
+        if getattr(self.config, "service_version", False):
+            self.enabled_phases.append("service_detection")
+
+        if getattr(self.config, "ssl_scan", False) or getattr(self.config, "http_headers", False):
+            self.enabled_phases.append("nse_scripts")
+
+        # Calculate equal weight slice for each enabled phase
+        phase_count = len(self.enabled_phases) * calculate_number_of_targets(self.config.targets) if self.enabled_phases else 1
+        equal_weight = 100.0 / phase_count
+
+        # Initialize all weights to 0 then set for enabled
         weights = {
-            'host_discovery': 5,
-            'tcp_scan': 0,
-            'udp_scan': 0,
-            'os_detection': 0,
-            'service_detection': 0,
-            'nse_scripts': 0
+            "host_discovery": 0,
+            "tcp_scan": 0,
+            "udp_scan": 0,
+            "os_detection": 0,
+            "service_detection": 0,
+            "nse_scripts": 0,
         }
-        
-        # Check scan options from config
-        has_tcp = hasattr(self.config, 'tcp_ports') and self.config.tcp_ports
-        has_udp = hasattr(self.config, 'udp_ports') and self.config.udp_ports
-        has_os_detection = hasattr(self.config, 'os_detection') and self.config.os_detection
-        has_service_detection = hasattr(self.config, 'service_version') and self.config.service_version
-        has_scripts = (hasattr(self.config, 'ssl_scan') and self.config.ssl_scan) or \
-                     (hasattr(self.config, 'http_headers') and self.config.http_headers)
-        
-        # Calculate TCP scan weight based on port count
-        if has_tcp and tcp_port_count > 0:
-            # Base weight of 15, plus scaling factor based on port count
-            if tcp_port_count <= 100:
-                weights['tcp_scan'] = 5
-            elif tcp_port_count <= 1000:
-                weights['tcp_scan'] = 10
-            elif tcp_port_count <= 5000:
-                weights['tcp_scan'] = 20
-            else:
-                weights['tcp_scan'] = 30  # For very large port scans
-        
-        # Calculate UDP scan weight based on port count  
-        if has_udp and udp_port_count > 0:
-            # UDP is generally slower than TCP, so higher base weight
-            if udp_port_count <= 100:
-                weights['udp_scan'] = 10
-            elif udp_port_count <= 1000:
-                weights['udp_scan'] = 20
-            else:
-                weights['udp_scan'] = 30  # UDP scans of many ports are very slow
-            
-        if has_os_detection:
-            weights['os_detection'] = 8
-            
-        if has_service_detection:
-            # Service detection weight also depends on number of open ports found
-            # but we'll use a reasonable base since we don't know open ports yet
-            weights['service_detection'] = 10
-            
-        if has_scripts:
-            # Significantly increase script scanning weight as it can be very time-consuming
-            weights['nse_scripts'] = 50 
-            
-        # If we have many ports and scripts, scripts become even more expensive
-        total_ports = tcp_port_count + udp_port_count
-        if has_scripts and total_ports > 1000:
-            weights['nse_scripts'] = 40  # Extra weight for script scanning on many ports
-            
-        # Normalize weights to sum to 100
-        total_weight = sum(weights.values())
-        if total_weight > 0:
-            for phase in weights:
-                weights[phase] = (weights[phase] / total_weight) * 100
-        else:
-            # Fallback if no scans are enabled
-            weights['host_discovery'] = 100
-                
+
+        for phase in self.enabled_phases:
+            weights[phase] = equal_weight
+
         return weights
 
     def _detect_scan_phase(self, line: str) -> str:
@@ -193,33 +137,30 @@ class CheckTargets:
                 import time
                 self.phase_start_times[new_phase] = time.time()
             
-            # Calculate weighted overall progress
-            phase_weight = self.phase_weights.get(self.current_phase, 0)
-            
-            # Calculate progress contribution from completed phases
-            completed_phases_progress = 0
-            phase_order = ['host_discovery', 'tcp_scan', 'udp_scan', 'os_detection', 'service_detection', 'nse_scripts']
-            
-            for phase in phase_order:
-                if phase == self.current_phase:
-                    break
-                if self.phase_weights[phase] > 0:  # Only count phases that are enabled
-                    completed_phases_progress += self.phase_weights[phase]
-            
-            # Add current phase progress
-            current_phase_progress = (percentage / 100) * phase_weight
-            
-            # Calculate overall progress
-            new_overall_progress = completed_phases_progress + current_phase_progress
-            
+            # Slice size for each phase (equal distribution)
+            slice_size = 100.0 / len(self.enabled_phases) if self.enabled_phases else 100.0
+
+            # Determine index of current phase in enabled phases list
+            try:
+                phase_index = self.enabled_phases.index(self.current_phase)
+            except ValueError:
+                phase_index = 0  # Fallback, shouldn't happen
+
+            # Completed portion from phases that are already finished
+            completed_progress = phase_index * slice_size
+
+            # Progress within the current phase
+            current_phase_progress = (percentage / 100) * slice_size
+            new_overall_progress = completed_progress + current_phase_progress
+
+
             # Ensure progress only increases (handle Nmap's phase transitions)
             if new_overall_progress > self.overall_progress:
                 self.overall_progress = round(new_overall_progress, 2)
             
-            # Only send progress updates if there's a meaningful change (>= 1%)
-            if abs(self.overall_progress - self.last_sent_progress) >= 1.0:
-                self.last_sent_progress = self.overall_progress
-                return min(self.overall_progress, 95.13)  # Cap at 99% until completion
+
+            self.last_sent_progress = self.overall_progress
+            return min(self.overall_progress, 98.37)
                 
         except (ValueError, IndexError):
             pass
@@ -315,7 +256,9 @@ class CheckTargets:
             return
             
         seen_lines.add(user_message)
-        self.redis_client.publish(self.config.scan_id, user_message)
+        
+        # Store output in Redis and publish to WebSocket
+        self._store_and_publish_message(user_message)
 
     def __check_alive(self) -> None:
         """
@@ -334,6 +277,9 @@ class CheckTargets:
 
         try:
             # URLs are checked and removed from the targets list.
+            logging.debug("Starting check targets script...")
+            self.redis_client.set(f"scan:{self.config.scan_id}", json.dumps({"status": self.status}))
+            self.redis_client.publish(f"{self.config.scan_id}:progress", str(random.uniform(1.4, 2.8)))
             urls, responding_urls = get_responding_urls(self.config.targets)
             self.alive_targets.update(responding_urls)
             self.config.targets = list(set(self.config.targets) - set(urls))
@@ -346,8 +292,7 @@ class CheckTargets:
                 
                 # Send initial information
                 starting_message = f"Starting scan of {len(self.config.targets)} targets..."
-                self.redis_client.publish(self.config.scan_id, starting_message)
-                self.redis_client.publish(f"{self.config.scan_id}:progress", "2")
+                self._store_and_publish_message(starting_message)
                 seen_lines.add(starting_message)
 
                 while True:
@@ -363,7 +308,7 @@ class CheckTargets:
                         # Heartbeat if needed
                         if time.time() - last_output_time > HEARTBEAT_INTERVAL:
                             heartbeat_msg = f"[heartbeat] Scan still running at {time.strftime('%H:%M:%S')}..."
-                            self.redis_client.publish(self.config.scan_id, heartbeat_msg)
+                            self._store_and_publish_message(heartbeat_msg)
                             last_output_time = time.time()
                         time.sleep(0.5)  # Avoid busy loop
 
@@ -374,28 +319,29 @@ class CheckTargets:
                 if return_code != 0:
                     self.status = "failed"
                     error_msg = "Scan failed. Please check the scan results for more details."
-                    self.redis_client.publish(self.config.scan_id, error_msg)
+                    self._store_and_publish_message(error_msg)
                     self.redis_client.set(f"scan:{self.config.scan_id}", json.dumps({"status": self.status}))
                     raise CheckTargetsException(f"Nmap process error: return code {return_code}")
                 else:
-                    self.redis_client.publish(self.config.scan_id, "Scan completed")
+                    completion_msg = "Scan completed! You will be redirected to the results page soon!"
+                    self._store_and_publish_message(completion_msg)
 
         except subprocess.CalledProcessError as process_exc:
             self.status = "failed"
             error_msg = f"Process error: {process_exc}"
-            self.redis_client.publish(self.config.scan_id, error_msg)
+            self._store_and_publish_message(error_msg)
             self.redis_client.set(f"scan:{self.config.scan_id}", json.dumps({"status": self.status}))
             raise CheckTargetsException("Nmap process error: " + str(process_exc)) from process_exc
         except subprocess.TimeoutExpired as timeout_exc:
             self.status = "failed"
             error_msg = f"Timeout error: {timeout_exc}"
-            self.redis_client.publish(self.config.scan_id, error_msg)
+            self._store_and_publish_message(error_msg)
             self.redis_client.set(f"scan:{self.config.scan_id}", json.dumps({"status": self.status}))
             raise CheckTargetsException("Timeout exceeded: " + str(timeout_exc)) from timeout_exc
         except Exception as exc:
             self.status = "failed"
             error_msg = f"Unexpected error: {exc}"
-            self.redis_client.publish(self.config.scan_id, error_msg)
+            self._store_and_publish_message(error_msg)
             self.redis_client.set(f"scan:{self.config.scan_id}", json.dumps({"status": self.status}))
             logging.error("Unexpected error in __check_alive: %s", exc)
             raise
@@ -501,11 +447,24 @@ class CheckTargets:
 
     def run(self):
         """Main function that runs the process of checking alive targets."""
-        logging.debug("Starting check targets script...")
-        self.redis_client.set(f"scan:{self.config.scan_id}", json.dumps({"status": self.status}))
         self.__check_alive()
         self.__parse_output()
         return self.__write_output()
+
+    def _store_and_publish_message(self, message: str) -> None:
+        """Store message in Redis and publish to WebSocket channel."""
+        try:
+            output_key = f"scan_output:{self.config.scan_id}"
+            # Append to Redis list for ordered output
+            self.redis_client.rpush(output_key, message)
+            # Set expiration to 24 hours
+            self.redis_client.expire(output_key, 86400)
+        except Exception as e:
+            import logging
+            logging.warning(f"Failed to store output in Redis: {e}")
+        
+        # Also publish to WebSocket channel
+        self.redis_client.publish(self.config.scan_id, message)
 
 
 def parse_cli_arguments():

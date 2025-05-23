@@ -48,9 +48,9 @@ def get_responding_urls(targets: list) -> tuple[list, set]:
     return urls, responding_urls
 
 
-def calculate_timeout(targets: list[str]) -> int:
+def calculate_number_of_targets(targets: list[str]) -> int:
     """
-    Calculate exec_cmd timeout based on the total number of targets.
+    Calculate the number of targets based on the total number of targets.
     """
     expanded_targets_no = 0
     for target in targets:
@@ -60,9 +60,7 @@ def calculate_timeout(targets: list[str]) -> int:
             expanded_targets_no += ipaddress.IPv4Network(target, strict=False).num_addresses
         else:
             expanded_targets_no += 1
-    timeout = expanded_targets_no * 7200
-    logging.debug("Number of targets: %s. Timeout: %s", expanded_targets_no, timeout)
-    return timeout
+    return expanded_targets_no
 
 
 def is_netblock_cidr(target: str) -> bool:

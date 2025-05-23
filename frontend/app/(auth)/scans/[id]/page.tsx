@@ -424,8 +424,8 @@ export default function FinishedScanPage() {
                     <TableRow>
                       <TableHead>Target</TableHead>
                       <TableHead>Hostname</TableHead>
-                      <TableHead>Open Ports</TableHead>
-                      <TableHead>Total Discovered Ports</TableHead>
+                      <TableHead>Open Ports Discovered</TableHead>
+                      <TableHead>Total Scanned Ports</TableHead>
                       <TableHead>OS</TableHead>
                     </TableRow>
                   </TableHeader>

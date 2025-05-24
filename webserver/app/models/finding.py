@@ -4,6 +4,7 @@ from app.database.base_class import Base
 from app.utils.timezone import now_utc
 from sqlalchemy import Enum as SqlEnum
 from enum import Enum
+from sqlalchemy.dialects.mysql import LONGTEXT
 
 class PortState(Enum):
     OPEN = "open"
@@ -23,8 +24,8 @@ class Finding(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String(255))
-    description = Column(String(1024))
-    recommendation = Column(String(1024))
+    description = Column(LONGTEXT)
+    recommendation = Column(LONGTEXT)
     port = Column(Integer)
     port_state = Column(SqlEnum(PortState), default=PortState.FILTERED)
     protocol = Column(String(255))

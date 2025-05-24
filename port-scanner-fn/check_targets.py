@@ -68,37 +68,41 @@ class CheckTargets:
         self.enabled_phases.append("host_discovery")
 
         # Dynamically add phases depending on scan options
-        if getattr(self.config, "tcp_ports", None):
+        if self.config.scan_options.tcp_ports:
             self.enabled_phases.append("tcp_scan")
 
-        if getattr(self.config, "udp_ports", None):
+        if self.config.scan_options.udp_ports:
             self.enabled_phases.append("udp_scan")
 
-        if getattr(self.config, "os_detection", False):
+        if self.config.scan_options.os_detection:
             self.enabled_phases.append("os_detection")
 
-        if getattr(self.config, "service_version", False):
+        if self.config.scan_options.service_version:
             self.enabled_phases.append("service_detection")
 
-        if getattr(self.config, "ssl_scan", False) or getattr(self.config, "http_headers", False):
+        if self.config.scan_options.ssl_scan or self.config.scan_options.http_headers:
             self.enabled_phases.append("nse_scripts")
 
         # Calculate equal weight slice for each enabled phase
         phase_count = len(self.enabled_phases) * calculate_number_of_targets(self.config.targets) if self.enabled_phases else 1
-        equal_weight = 100.0 / phase_count
+        phase_weight = 100.0 / phase_count
+
 
         # Initialize all weights to 0 then set for enabled
         weights = {
-            "host_discovery": 0,
-            "tcp_scan": 0,
-            "udp_scan": 0,
-            "os_detection": 0,
-            "service_detection": 0,
-            "nse_scripts": 0,
+            'host_discovery': 0,
+            'tcp_scan': 0,
+            'udp_scan': 0,
+            'os_detection': 0,
+            'service_detection': 0,
+            'nse_scripts': 0,
         }
 
         for phase in self.enabled_phases:
-            weights[phase] = equal_weight
+            if phase == "nse_scripts":
+                weights[phase] = phase_weight * 2
+            else:
+                weights[phase] = phase_weight
 
         return weights
 
@@ -160,7 +164,7 @@ class CheckTargets:
             
 
             self.last_sent_progress = self.overall_progress
-            return min(self.overall_progress, 98.37)
+            return min(self.overall_progress, round(random.uniform(75.12, 78.37), 2))
                 
         except (ValueError, IndexError):
             pass
@@ -176,6 +180,12 @@ class CheckTargets:
         
         # Skip timing lines entirely (we parse progress but don't display)
         if '% done' in line and 'etc:' in line_lower:
+            return None
+        
+        if "using" in line_lower:
+            return None
+        
+        if "error:" in line_lower:
             return None
             
         # Transform status update lines
@@ -226,8 +236,7 @@ class CheckTargets:
             
         # Let other meaningful messages pass through
         if any(keyword in line_lower for keyword in [
-            'starting', 'completed', 'finished', 'discovered', 'found', 
-            'warning', 'error', 'failed', 'timeout'
+            'starting', 'completed', 'finished', 'discovered', 'failed', 'timeout'
         ]):
             return line
             
@@ -323,7 +332,7 @@ class CheckTargets:
                     self.redis_client.set(f"scan:{self.config.scan_id}", json.dumps({"status": self.status}))
                     raise CheckTargetsException(f"Nmap process error: return code {return_code}")
                 else:
-                    completion_msg = "Scan completed! You will be redirected to the results page soon!"
+                    completion_msg = "Scan completed!"
                     self._store_and_publish_message(completion_msg)
 
         except subprocess.CalledProcessError as process_exc:

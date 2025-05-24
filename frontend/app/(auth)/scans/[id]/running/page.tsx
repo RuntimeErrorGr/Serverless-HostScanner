@@ -45,9 +45,8 @@ export default function PendingRunningScanPage() {
   const [nmapOutput, setNmapOutput] = useState<string>("")
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const [redirecting, setRedirecting] = useState<boolean>(false)
-  const [statusPolling, setStatusPolling] = useState<NodeJS.Timeout | null>(null)
-  const [elapsedTime, setElapsedTime] = useState<string>("0s")
   const outputRef = useRef<HTMLDivElement>(null)
+  const [elapsedTime, setElapsedTime] = useState<string>("0s")
 
   // Real-time cronometer effect using timezone utility
   useEffect(() => {
@@ -63,7 +62,7 @@ export default function PendingRunningScanPage() {
   // Fetch initial scan data from the API
   useEffect(() => {
     if (!scanId) return;
-    
+
     async function fetchScanData() {
       try {
         setIsLoading(true);
@@ -81,33 +80,22 @@ export default function PendingRunningScanPage() {
           setNmapOutput(scanData.output);
         }
         
-        // If scan is already completed or failed, set progress to 100% and redirect
+        // If scan is already completed or failed, handle redirect quickly
         if (scanData.status === "completed" || scanData.status === "failed") {
           setProgress(100);
-          // Add slight delay then redirect to results page
           handleRedirect();
-        } else {
-          // Start polling the status endpoint
-          startStatusPolling();
         }
       } catch (err) {
-        console.error('Error fetching scan data:', err);
+        console.error("Error fetching scan data:", err);
       } finally {
         setIsLoading(false);
       }
     }
     
     fetchScanData();
-    
-    // Clean up polling interval on unmount
-    return () => {
-      if (statusPolling) {
-        clearInterval(statusPolling);
-      }
-    };
   }, [scanId, router]);
 
-  // Establish a real WebSocket connection to stream scan output & progress
+  // Establish a real WebSocket connection to stream scan output, progress & status
   useEffect(() => {
     if (!scanId) return
 
@@ -135,6 +123,21 @@ export default function PendingRunningScanPage() {
             if (value > 0 && !scan.started_at) {
               refreshScanData();
             }
+          }
+        } else if (message.type === "status") {
+          const newStatus: string = message.value;
+
+          setScan((prev) => ({
+            ...prev,
+            status: newStatus,
+            started_at: message.started_at || prev.started_at,
+            finished_at: message.finished_at || prev.finished_at,
+            name: prev.name,
+          }));
+
+          if (newStatus === "completed" || newStatus === "failed") {
+            setProgress(100);
+            handleRedirect();
           }
         } else if (message.type === "output") {
           setNmapOutput((prev: string) => prev + message.value + "\n")
@@ -173,38 +176,6 @@ export default function PendingRunningScanPage() {
     }
   };
 
-  // Poll the status endpoint to check for completion
-  const startStatusPolling = () => {
-    // Cancel any existing polling
-    if (statusPolling) {
-      clearInterval(statusPolling);
-    }
-    
-    const interval = setInterval(async () => {
-      try {
-        const data = await scansAPI.getScanStatus(scanId);
-        
-        // Update the scan status in our local state
-        setScan(prev => ({ ...prev, status: data.status }));
-        
-        // If status changed to running and we don't have start time, refresh full scan data
-        if (data.status === "running" && !scan.started_at) {
-          refreshScanData();
-        }
-        
-        // If scan is complete or failed, handle redirect
-        if (data.status === "completed" || data.status === "failed") {
-          handleRedirect();
-          clearInterval(interval);
-        }
-      } catch (err) {
-        console.error('Error polling scan status:', err);
-      }
-    }, 5000); // Poll every 5 seconds
-    
-    setStatusPolling(interval);
-  };
-  
   // Handle redirection to results page
   const handleRedirect = () => {
     if (!redirecting) {
@@ -245,7 +216,7 @@ export default function PendingRunningScanPage() {
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <CardTitle>Scan Progress</CardTitle>
-            <Badge variant={scan.status === "running" ? "default" : scan.status === "completed" ? "success" : "secondary"}>
+            <Badge variant={scan.status === "running" ? "default" : scan.status === "completed" ? "secondary" : "outline"}>
               {scan.status === "running" || (scan.status === "pending" && progress > 0) ? (
                 <span className="flex items-center">
                   <Loader2 className="mr-1 h-3 w-3 animate-spin" />
@@ -329,7 +300,7 @@ export default function PendingRunningScanPage() {
               </CardHeader>
               <CardContent>
                 <ParameterSection
-                  parameters={scan.type === 'custom' ? scan.parameters : getDefaultScanParameters(scan.type || '')}
+                  parameters={scan.type === 'custom' ? (scan.parameters || {}) : getDefaultScanParameters(scan.type || '')}
                 />
               </CardContent>
             </Card>

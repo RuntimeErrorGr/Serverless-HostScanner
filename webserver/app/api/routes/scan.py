@@ -61,8 +61,8 @@ async def websocket_scan(websocket: WebSocket, scan_uuid: str):
     r = aioredis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=0)
     pubsub = r.pubsub()
     # Subscribe to both main channel and progress channel
-    await pubsub.subscribe(scan_uuid, f"{scan_uuid}:progress")
-    log.info(f"Subscribed to scan_uuid: {scan_uuid} and progress channel")
+    await pubsub.subscribe(scan_uuid, f"{scan_uuid}:progress", f"{scan_uuid}:status")
+    log.info(f"Subscribed to channels for scan_uuid: {scan_uuid}")
 
     sent_messages = set()  # Track sent messages to avoid duplicates
     
@@ -71,9 +71,11 @@ async def websocket_scan(websocket: WebSocket, scan_uuid: str):
             message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=5.0)
             if message and message['type'] == 'message':
                 channel = message['channel'].decode()
-                msg_text = message['data'].decode()
+                msg_text_raw = message['data']
                 
+                # Progress updates are numeric strings; status updates & output may be JSON
                 if channel == f"{scan_uuid}:progress":
+                    msg_text = msg_text_raw.decode() if isinstance(msg_text_raw, (bytes, bytearray)) else str(msg_text_raw)
                     # Send progress update as a special message type
                     try:
                         progress = float(msg_text)
@@ -83,13 +85,26 @@ async def websocket_scan(websocket: WebSocket, scan_uuid: str):
                         })
                     except ValueError:
                         log.error(f"Invalid progress value received: {msg_text}")
+                elif channel == f"{scan_uuid}:status":
+                    # Forward status change message
+                    try:
+                        # Message is JSON encoded by watch_scan
+                        status_data = json.loads(msg_text_raw.decode() if isinstance(msg_text_raw, (bytes, bytearray)) else msg_text_raw)
+                        await websocket.send_json({
+                            "type": "status",
+                            "value": status_data.get("status"),
+                            "started_at": status_data.get("started_at"),
+                            "finished_at": status_data.get("finished_at"),
+                        })
+                    except json.JSONDecodeError:
+                        log.warning(f"Received non-JSON status message: {msg_text_raw}")
                 else:
                     # Regular scan output handling
+                    msg_text = msg_text_raw.decode() if isinstance(msg_text_raw, (bytes, bytearray)) else str(msg_text_raw)
                     if msg_text in sent_messages:
                         continue
                     
                     sent_messages.add(msg_text)
-                    log.info(f"Sending message: {msg_text}")
                     await websocket.send_json({
                         "type": "output",
                         "value": msg_text
@@ -105,7 +120,7 @@ async def websocket_scan(websocket: WebSocket, scan_uuid: str):
     except Exception as e:
         log.error(f"Error in websocket_scan: {e}")
     finally:
-        await pubsub.unsubscribe(scan_uuid, f"{scan_uuid}:progress")
+        await pubsub.unsubscribe(scan_uuid, f"{scan_uuid}:progress", f"{scan_uuid}:status")
         await pubsub.close()
         await r.close()
 

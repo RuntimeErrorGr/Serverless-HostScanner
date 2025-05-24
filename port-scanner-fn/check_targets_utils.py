@@ -222,10 +222,10 @@ class CheckTargetsOptions:
             return "--traceroute" if self.traceroute else ""
         
         def get_ssl_scan_flag() -> str:
-            return "--script=ssl-cert,ssl-enum-ciphers" if self.ssl_scan else ""
+            return "--script-updatedb --script=ssl-cert,ssl-poodle,ssl-enum-ciphers,mysql-vuln-cve2012-2122,ssl-heartbleed,ssh-publickey-acceptance,xmpp-brute" if self.ssl_scan else ""
 
         def get_http_headers_flag() -> str:
-            return "--script=http-headers,http-title,http-server-header" if self.http_headers else ""
+            return "--script-updatedb --script=http-headers,http-cookie-flags,http-phpself-xss,http-vuln-cve2011-3368,http-xssed.nse,http-vuln-cve2017-8917,http-vuln-cve2017-5638,http-csrf.nse,samba-vuln-cve-2012-1182,http-frontpage-login,http-wordpress-brute,http-vuln-cve2010-2861,http-shellshock,http-sql-injection,http-title,http-server-header,auth-spoof,redis-brute,redis-info" if self.http_headers else ""
 
         # Get TCP scan type (only one can be used)
         def get_tcp_scan_flag() -> str:

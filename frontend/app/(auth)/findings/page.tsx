@@ -139,6 +139,7 @@ export default function FindingsPage() {
       title: "Date Found",
       sortable: true,
       filterable: true,
+      filterType: "date" as const,
       render: (row: any) => new Date(row.created_at).toLocaleString(),
     },
     {

@@ -255,6 +255,7 @@ export default function ScansPage() {
       title: "Start Time",
       sortable: true,
       filterable: true,
+      filterType: "date" as const,
       render: (row: any) => new Date(row.startTime).toLocaleString(),
     },
     {
@@ -262,6 +263,7 @@ export default function ScansPage() {
       title: "End Time",
       sortable: true,
       filterable: true,
+      filterType: "date" as const,
       render: (row: any) =>
         row.status === "completed" || row.status === "failed" ? new Date(row.endTime).toLocaleString() : "-",
     },

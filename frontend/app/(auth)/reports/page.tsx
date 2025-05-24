@@ -96,6 +96,7 @@ export default function ReportsPage() {
       title: "Date Generated",
       sortable: true,
       filterable: true,
+      filterType: "date" as const,
       render: (row: any) => new Date(row.dateGenerated).toLocaleString(),
     },
     {
@@ -103,6 +104,7 @@ export default function ReportsPage() {
       title: "Last Downloaded",
       sortable: true,
       filterable: true,
+      filterType: "date" as const,
       render: (row: any) => (row.lastDownloaded ? new Date(row.lastDownloaded).toLocaleString() : "Never"),
     },
     {

@@ -88,6 +88,7 @@ export default function TargetsPage() {
       title: "Date Added",
       sortable: true,
       filterable: true,
+      filterType: "date" as const,
       render: (row: any) => new Date(row.dateAdded).toLocaleString(),
     },
     {

@@ -45,12 +45,14 @@ def update_scan_status(scan_uuid, status, db):
             )
             .count()
         )
-        scan.name = "Results report no. " + str(total_scans + 1)
+        scan.name = "Scan report no. " + str(total_scans + 1)
         scan.finished_at = now_utc()
         # Send final progress
         try:
             r = redis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=0)
             r.publish(f"{scan_uuid}:progress", "100")
+            r.set(f"scan_progress:{scan_uuid}", "100")
+            r.set(f"scan:{scan_uuid}", json.dumps({"status": status.value, "finished_at": scan.finished_at.isoformat()}))
             r.close()
         except Exception as e:
             log.error(f"Error publishing final progress for scan {scan_uuid}: {e}")
@@ -339,7 +341,7 @@ def watch_scan(scan_uuid):
                     try:
                         prog = float(msg["data"].decode())
                         last_message_time = time.time()
-                        r.set(key_progress_cached, str(prog), ex=3600)
+                        r.set(key_progress_cached, str(prog), ex=36000)
                     except ValueError:
                         pass  # Ignore non-numeric messages on progress channel
 
@@ -369,7 +371,8 @@ def watch_scan(scan_uuid):
                             scan = db.query(Scan).filter_by(uuid=scan_uuid).first()
                             started_at_iso = scan.started_at.isoformat() if scan.started_at else None
                             finished_at_iso = scan.finished_at.isoformat() if scan.finished_at else None
-
+                            
+                            # save finished_at to redis
                             db.close()
                         else:
                             started_at_iso = None

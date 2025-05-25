@@ -37,7 +37,6 @@ def get_or_create_db_user(keycloak_user: KeycloakUser, db: Session) -> User:
 @router.get("/callback")
 def sync_user(user: OIDCUser = Depends(idp.get_current_user()), db: Session = Depends(get_db)):
     keycloak_user = idp.get_user(user.sub)
-    log.info(f"Keycloak user: {keycloak_user}")
 
     if not get_or_create_db_user(keycloak_user, db):
         log.error("User not found")

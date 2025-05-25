@@ -745,7 +745,7 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                                     }}
                                   />
                                 </FormControl>
-                                <FormLabel className="font-normal">HTTP Headers Scan</FormLabel>
+                                <FormLabel className="font-normal">HTTP(S) Scan</FormLabel>
                               </FormItem>
                               <FormItem className="flex items-center space-x-3 space-y-0">
                                 <FormControl>

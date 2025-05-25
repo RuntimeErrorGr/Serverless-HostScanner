@@ -1,42 +1,42 @@
-import { formatDuration } from "@/lib/timezone"
-import { formatElapsedTime } from "@/lib/timezone"
+"use client"
+
 import { useState, useEffect } from "react"
+import { formatDuration, formatElapsedTime } from "@/lib/timezone"
 
 interface ElapsedTimerCellProps {
-  startedAt: string  // ISO timestamp
-  finishedAt?: string
+  startedAt: string | null
+  finishedAt: string | null
   status: string
 }
 
-export function ElapsedTimerCell({
-  startedAt,
-  finishedAt,
-  status,
-}: ElapsedTimerCellProps) {
-  // Local state for elapsed time string
-  const [display, setDisplay] = useState(() => {
-    // initialize immediately
-    if (["completed", "failed"].includes(status.toLowerCase())) {
-      return formatDuration(startedAt, finishedAt)
-    }
-    return formatElapsedTime(startedAt)
-  })
+export function ElapsedTimerCell({ startedAt, finishedAt, status }: ElapsedTimerCellProps) {
+  const [elapsedTime, setElapsedTime] = useState<string>("")
 
   useEffect(() => {
-    // If scan is done, just show the final duration—no timer
-    if (["completed", "failed"].includes(status.toLowerCase())) {
-      setDisplay(formatDuration(startedAt, finishedAt))
+    // If scan is completed or failed, show the final duration
+    if ((status.toLowerCase() === "completed" || status.toLowerCase() === "failed") && startedAt && finishedAt) {
+      setElapsedTime(formatDuration(startedAt, finishedAt))
       return
     }
 
-    // Otherwise tick every second
-    const interval = setInterval(() => {
-      setDisplay(formatElapsedTime(startedAt))
-    }, 1000)
+    // If scan is running and has started, show real-time elapsed time
+    if (status.toLowerCase() === "running" && startedAt) {
+      const updateElapsed = () => {
+        setElapsedTime(formatElapsedTime(startedAt))
+      }
 
-    // Clean up on unmount or status change
-    return () => clearInterval(interval)
+      // Update immediately
+      updateElapsed()
+
+      // Update every second
+      const interval = setInterval(updateElapsed, 1000)
+
+      return () => clearInterval(interval)
+    }
+
+    // For pending scans or scans without start time
+    setElapsedTime("-")
   }, [startedAt, finishedAt, status])
 
-  return <span>{display}</span>
+  return <span className="text-sm">{elapsedTime}</span>
 }

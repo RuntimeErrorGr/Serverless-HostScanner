@@ -63,16 +63,26 @@ export function DataTable<T>({ data, columns, onRowClick, className, emptyState 
           const itemDate = new Date(value)
           const filterDate = new Date(dateFilter.date!)
 
-          // If time is specified, include it in comparison
+          // If time is specified, match exact date and time (without seconds)
           if (dateFilter.time) {
             const [hours, minutes] = dateFilter.time.split(":").map(Number)
             filterDate.setHours(hours, minutes, 0, 0)
 
-            // For date-time filtering, check if item date is on or after the filter date
-            return itemDate >= filterDate
+            // For exact date-time matching, check if both date and time match (ignoring seconds)
+            return (
+              itemDate.getFullYear() === filterDate.getFullYear() &&
+              itemDate.getMonth() === filterDate.getMonth() &&
+              itemDate.getDate() === filterDate.getDate() &&
+              itemDate.getHours() === filterDate.getHours() &&
+              itemDate.getMinutes() === filterDate.getMinutes()
+            )
           } else {
-            // For date-only filtering, check if it's the same date
-            return itemDate.toDateString() === filterDate.toDateString()
+            // For date-only filtering, check if it's the exact same date (ignore time)
+            return (
+              itemDate.getFullYear() === filterDate.getFullYear() &&
+              itemDate.getMonth() === filterDate.getMonth() &&
+              itemDate.getDate() === filterDate.getDate()
+            )
           }
         })
       }
@@ -260,7 +270,8 @@ export function DataTable<T>({ data, columns, onRowClick, className, emptyState 
                                   handleDateFilterChange(column.key, dateFilters[column.key]?.date, e.target.value)
                                 }
                                 className="h-7 text-xs"
-                                placeholder="Time"
+                                placeholder="HH:MM"
+                                step="60"
                               />
                             </div>
                           </div>

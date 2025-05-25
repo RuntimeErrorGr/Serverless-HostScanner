@@ -146,29 +146,3 @@ export const findingsAPI = {
       method: "DELETE",
     }),
 }
-
-// WebSocket connection for real-time updates
-export function connectWebSocket(
-  scanId: string,
-  callbacks: {
-    onMessage?: (data: any) => void
-    onProgress?: (progress: number) => void
-    onComplete?: (data: any) => void
-    onError?: (error: any) => void
-  },
-) {
-  // In a real app, this would connect to a WebSocket server
-  console.log(`Connecting to WebSocket for scan ${scanId}`)
-
-  // Mock implementation
-  const mockSocket = {
-    send: (message: string) => {
-      console.log("WebSocket message sent:", message)
-    },
-    close: () => {
-      console.log("WebSocket connection closed")
-    },
-  }
-
-  return mockSocket
-}

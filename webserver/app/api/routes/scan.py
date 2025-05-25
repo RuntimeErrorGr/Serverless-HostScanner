@@ -8,7 +8,6 @@ from fastapi import APIRouter, Depends, Request, HTTPException, WebSocket, WebSo
 from fastapi_keycloak import OIDCUser
 from sqlalchemy.orm import Session
 import redis.asyncio as aioredis
-from datetime import timedelta
 
 from app.api.dependencies import idp
 from app.log import get_logger
@@ -20,7 +19,7 @@ from app.models.scan import Scan, ScanStatus, ScanType
 from app.models.user import User
 from app.tasks import watch_scan
 from app.models.finding import Finding
-from app.utils.timezone import now_utc
+
 
 router = APIRouter()
 
@@ -55,6 +54,73 @@ def index(user: OIDCUser = Depends(idp.get_current_user()), db: Session = Depend
     
     return {"data": scan_list}
 
+
+@router.websocket("/ws")
+async def websocket_scans(websocket: WebSocket, keycloak_uuid: str, db: Session = Depends(get_db)):
+    await websocket.accept()
+    r = aioredis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=0)
+
+    try:
+        while True:
+            scans = (
+                db.query(
+                    Scan.uuid,
+                    Scan.name,
+                    Scan.started_at,
+                    Scan.status
+                )
+                .join(User)
+                .filter(User.keycloak_uuid == keycloak_uuid)
+                .filter(Scan.status != ScanStatus.PENDING)
+                .filter(Scan.status != ScanStatus.COMPLETED)
+                .all()
+            )
+
+            for scan in scans:
+                status = None
+                finished_at = None
+                progress = None
+                
+                key_status_finished_at = f"scan:{scan.uuid}"
+                key_progress_cached = f"scan_progress:{scan.uuid}"
+
+                status_finished_at = await r.get(key_status_finished_at)
+                progress = await r.get(key_progress_cached)
+                
+                if status_finished_at:
+                    try:
+                        status = json.loads(status_finished_at.decode()).get("status")
+                    except json.JSONDecodeError:
+                        status = None
+                    try:
+                        finished_at = json.loads(status_finished_at.decode()).get("finished_at")
+                    except json.JSONDecodeError:
+                        finished_at = None
+                if progress:
+                    try:
+                        progress = float(progress.decode())
+                    except ValueError:
+                        progress = None
+
+                await websocket.send_json({
+                    "type": "scan_update",
+                    "scan_uuid": scan.uuid,
+                    "status": status if status else None,
+                    "progress": progress if progress else None,
+                    "finished_at": finished_at if finished_at else None,
+                    "started_at": scan.started_at.isoformat() if scan.started_at else None,
+                    "name": scan.name if scan.name else "Waiting for scan to start..."
+                })
+
+            await asyncio.sleep(5)
+
+    except WebSocketDisconnect:
+        log.info(f"WebSocket disconnected for scans page user_id: {keycloak_uuid}")
+    except Exception as e:
+        log.error(f"Error in websocket_scans: {e}")
+    finally:
+        await websocket.close()
+        
 
 @router.websocket("/ws/{scan_uuid}")
 async def websocket_scan(websocket: WebSocket, scan_uuid: str):
@@ -358,10 +424,7 @@ def create_scan_entry(inserted_targets, db_user, payload, db):
         target_summary += f" and {len(targets) - 3} more"
     
     # get tatal number of running/pending scans for the user
-    total_scans = db.query(Scan).filter(
-        Scan.user_id == db_user.id,
-        Scan.status.in_([ScanStatus.RUNNING, ScanStatus.PENDING])
-    ).count()
+    total_scans = db.query(Scan).filter(Scan.user_id == db_user.id).count()
     scan_name = f"Assessment no. {total_scans + 1}"
 
     new_scan = Scan(

@@ -87,8 +87,8 @@ export const nmapParameterDocs: Record<string, ParameterDoc> = {
   },
 
   http_headers: {
-    name: "HTTP Headers Scan",
-    description: "Retrieves and analyzes HTTP headers from web servers to gather information about technologies and configurations.",
+    name: "HTTP(S) Scan",
+    description: "Retrieves and analyzes HTTP(S) headers from web servers to gather information about technologies and configurations.",
     scanTime: "Fast - adds 1-3 seconds per HTTP service",
     precision: "High - reveals web server technologies",
     findings: "Server software, technologies, security headers, hidden directories",

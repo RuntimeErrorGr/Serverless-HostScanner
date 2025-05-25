@@ -21,7 +21,6 @@ import { toast } from "@/components/ui/use-toast"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useAuth } from "@/components/auth-provider"
 import { scansAPI } from "@/lib/api"
-import { formatToBucharestTime } from "@/lib/timezone"
 import { ElapsedTimerCell } from "@/components/elapsed-cell"
 
 // Format scan options from form data
@@ -130,6 +129,86 @@ export default function ScansPage() {
     }
 
     fetchScans()
+  }, [])
+
+  // Establish a real WebSocket connection to stream all scans statuses and progress
+  useEffect(() => {
+    const protocol = window.location.protocol === "https:" ? "wss" : "ws"
+    const wsUrl = `${protocol}://${window.location.host}/api/scans/ws?keycloak_uuid=${user?.id}`
+
+    console.log(`Connecting to WebSocket ${wsUrl}`)
+
+    const ws = new WebSocket(wsUrl)
+
+    ws.onopen = () => {
+      console.log("WebSocket connection established for scans page")
+    }
+
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data)
+        console.log("WebSocket message received:", message)
+
+        if (message.type === "scan_update") {
+          const { scan_uuid, status, progress, finished_at, started_at, name } = message
+
+          setScans((prevScans) =>
+            prevScans.map((scan) => {
+              if (scan.uuid === scan_uuid) {
+                const updatedScan = { ...scan }
+
+                // Update status if provided
+                if (status) {
+                  updatedScan.status = status
+                }
+
+                // Update progress if provided (for running scans)
+                if (progress !== undefined) {
+                  if (progress == null) {
+                    updatedScan.current_progress = 0
+                  } else {
+                    updatedScan.current_progress = progress
+                  }
+                }
+
+                // Update finished_at when scan completes or fails
+                if (finished_at) {
+                  updatedScan.finished_at = finished_at
+                }
+
+                // Update started_at if provided
+                if (started_at) {
+                  updatedScan.started_at = started_at
+                }
+
+                // Update name if provided
+                if (name) {
+                  updatedScan.name = name
+                }
+
+                return updatedScan
+              }
+              return scan
+            }),
+          )
+        }
+      } catch (err) {
+        console.error("Failed to parse WebSocket message", err)
+      }
+    }
+
+    ws.onerror = (err) => {
+      console.error("WebSocket error", err)
+    }
+
+    ws.onclose = () => {
+      console.log("WebSocket scans pageconnection closed")
+    }
+
+    // Cleanup on component unmount
+    return () => {
+      ws.close()
+    }
   }, [])
 
   const startIndex = (currentPage - 1) * itemsPerPage
@@ -273,18 +352,12 @@ export default function ScansPage() {
         if (!Array.isArray(targets)) {
           targets = [targets]
         }
-    
-        const lines = targets.length > 3
-          ? [...targets.slice(0, 3), "..."]
-          : targets
-    
-        return (
-          <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.4 }}>
-            {lines.join("\n")}
-          </div>
-        )
+
+        const lines = targets.length > 3 ? [...targets.slice(0, 3), "..."] : targets
+
+        return <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.4 }}>{lines.join("\n")}</div>
       },
-    },    
+    },
     {
       key: "status",
       title: "Status",
@@ -303,7 +376,12 @@ export default function ScansPage() {
                     : "bg-red-500"
             }`}
           />
-          <span className="capitalize">{row.status.toLowerCase()}</span>
+          <span className="capitalize">
+            {row.status.toLowerCase()}
+            {row.status.toLowerCase() === "running" && row.current_progress !== null && (
+              <span className="text-muted-foreground ml-1">({row.current_progress}%)</span>
+            )}
+          </span>
         </div>
       ),
     },
@@ -313,7 +391,28 @@ export default function ScansPage() {
       sortable: true,
       filterable: true,
       filterType: "date" as const,
-      render: (row: any) => formatToBucharestTime(row.created_at),
+      render: (row: any) => {
+        const date = new Date(row.created_at)
+        return (
+          <div className="flex flex-col">
+            <span className="text-sm font-medium">
+              {date.toLocaleDateString("en-GB", {
+                day: "2-digit",
+                month: "2-digit",
+                year: "numeric",
+                timeZone: "Europe/Bucharest",
+              })}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {date.toLocaleTimeString("en-GB", {
+                hour: "2-digit",
+                minute: "2-digit",
+                timeZone: "Europe/Bucharest",
+              })}
+            </span>
+          </div>
+        )
+      },
     },
     {
       key: "finished_at",
@@ -321,10 +420,31 @@ export default function ScansPage() {
       sortable: true,
       filterable: true,
       filterType: "date" as const,
-      render: (row: any) =>
-        row.status.toLowerCase() === "completed" || row.status.toLowerCase() === "failed"
-          ? formatToBucharestTime(row.finished_at)
-          : "-",
+      render: (row: any) => {
+        if (row.status.toLowerCase() === "completed" || row.status.toLowerCase() === "failed") {
+          const date = new Date(row.finished_at)
+          return (
+            <div className="flex flex-col">
+              <span className="text-sm font-medium">
+                {date.toLocaleDateString("en-GB", {
+                  day: "2-digit",
+                  month: "2-digit",
+                  year: "numeric",
+                  timeZone: "Europe/Bucharest",
+                })}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {date.toLocaleTimeString("en-GB", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  timeZone: "Europe/Bucharest",
+                })}
+              </span>
+            </div>
+          )
+        }
+        return "-"
+      },
     },
     {
       key: "duration",
@@ -332,12 +452,8 @@ export default function ScansPage() {
       sortable: true,
       filterable: true,
       render: (row: any) => (
-        <ElapsedTimerCell
-          startedAt={row.started_at}
-          finishedAt={row.finished_at}
-          status={row.status}
-        />
-      )
+        <ElapsedTimerCell startedAt={row.started_at} finishedAt={row.finished_at} status={row.status} />
+      ),
     },
     {
       key: "actions",

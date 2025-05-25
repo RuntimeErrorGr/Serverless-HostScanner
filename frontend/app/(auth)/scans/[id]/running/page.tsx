@@ -108,6 +108,7 @@ export default function PendingRunningScanPage() {
 
     ws.onopen = () => {
       console.log("WebSocket connection established")
+      setNmapOutput((prev: string) => prev + "\n")
     }
 
     ws.onmessage = (event) => {
@@ -152,7 +153,7 @@ export default function PendingRunningScanPage() {
     }
 
     ws.onclose = () => {
-      console.log("WebSocket connection closed")
+      console.log("WebSocket running scan page connection closed")
     }
 
     // Cleanup on component unmount

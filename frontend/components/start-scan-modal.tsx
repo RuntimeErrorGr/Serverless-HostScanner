@@ -577,7 +577,7 @@ export function StartScanModal({ isOpen, onClose, onSubmit }: StartScanModalProp
                               />
                             </div>
                             <FormDescription>
-                              Enter specific ports (comma-separated) or ranges (e.g., 80-100), or select from top ports
+                              Enter specific ports or ranges. UDP ports scans can take longer to complete.
                             </FormDescription>
                             <FormMessage />
                           </FormItem>

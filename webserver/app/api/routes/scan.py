@@ -43,6 +43,7 @@ def index(user: OIDCUser = Depends(idp.get_current_user()), db: Session = Depend
         
         scan_info = {
             "uuid": scan.uuid,
+            "name": scan.name,
             "status": scan.status.value if scan.status else None,
             "type": scan.type.value if scan.type else None,
             "created_at": scan.created_at,
@@ -356,7 +357,12 @@ def create_scan_entry(inserted_targets, db_user, payload, db):
     if len(targets) > 3:
         target_summary += f" and {len(targets) - 3} more"
     
-    scan_name = f"Scan results for {target_summary}"
+    # get tatal number of running/pending scans for the user
+    total_scans = db.query(Scan).filter(
+        Scan.user_id == db_user.id,
+        Scan.status.in_([ScanStatus.RUNNING, ScanStatus.PENDING])
+    ).count()
+    scan_name = f"Assessment no. {total_scans + 1}"
 
     new_scan = Scan(
         user_id=db_user.id,

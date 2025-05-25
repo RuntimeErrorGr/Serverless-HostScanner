@@ -37,7 +37,7 @@ async function fetchAPI(endpoint: string, options: RequestInit = {}) {
   const url = `${API_BASE_URL}${endpoint}`
 
   // Get auth token
-  const token = getAuthToken();
+  const token = getAuthToken()
 
   // Default headers
   const headers = {
@@ -53,28 +53,45 @@ async function fetchAPI(endpoint: string, options: RequestInit = {}) {
 
   // Handle non-2xx responses
   if (!response.ok) {
-    // For 401 unauthorized, may need to refresh token or redirect to login
     if (response.status === 401) {
-      console.error('Unauthorized: Authentication token may be invalid or expired');
-      // You might want to trigger a token refresh or redirect to login here
+      console.error("Unauthorized: Authentication token may be invalid or expired")
+      // redirect to login
+      window.location.href = "/login"
     }
-    
-    const error = await response.json().catch(() => ({}))
-    throw new Error(error.message || error.detail || `API request failed with status ${response.status}`)
+    const errorBody = await response.json().catch(() => ({}))
+    throw new Error(
+      errorBody.message ||
+      errorBody.detail ||
+      `API request failed with status ${response.status}`
+    )
   }
 
-  // Parse JSON response if available
-  const contentType = response.headers.get("content-type")
-  if (contentType && contentType.includes("application/json")) {
-    return response.json()
+  // If it's JSON, parse it
+  const contentType = response.headers.get("content-type") || ""
+  if (contentType.includes("application/json")) {
+    const payload = await response.json()
+
+    // If the payload is an object with a top‐level `data` key, return that
+    if (
+      payload !== null &&
+      typeof payload === "object" &&
+      // Make sure it's a plain data wrapper
+      Object.prototype.hasOwnProperty.call(payload, "data")
+    ) {
+      return (payload as any).data
+    }
+
+    // Otherwise return the full JSON
+    return payload
   }
 
+  // Not JSON (e.g. file download), return raw response
   return response
 }
 
 // Scans API
 export const scansAPI = {
-  getScans: () => fetchAPI("/scans"),
+  getScans: () => fetchAPI("/scans/"),
   getScan: (id: string) => fetchAPI(`/scans/${id}`),
   getScanStatus: (id: string) => fetchAPI(`/scans/${id}/status`),
   getScanFindings: (id: string) => fetchAPI(`/scans/${id}/findings`),
@@ -118,6 +135,16 @@ export const reportsAPI = {
       method: "DELETE",
     }),
   downloadReport: (id: string) => fetchAPI(`/reports/${id}/download`),
+}
+
+// Findings API
+export const findingsAPI = {
+  getFindings: () => fetchAPI("/findings"),
+  getFinding: (id: string) => fetchAPI(`/findings/${id}`),
+  deleteFinding: (id: string) =>
+    fetchAPI(`/findings/${id}`, {
+      method: "DELETE",
+    }),
 }
 
 // WebSocket connection for real-time updates

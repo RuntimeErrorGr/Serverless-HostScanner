@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -16,110 +16,121 @@ import {
 import { StartScanModal } from "@/components/start-scan-modal"
 import { DeleteScanDialog } from "@/components/delete-scan-dialog"
 import { GenerateReportDialog } from "@/components/generate-report-dialog"
-import { Plus, MoreHorizontal, FileText, Trash2, Search } from "lucide-react"
+import { Plus, MoreHorizontal, FileText, Trash2, Search, Loader2 } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useAuth } from "@/components/auth-provider"
 import { scansAPI } from "@/lib/api"
-
-// Mock data for scans - can be empty for testing empty state
-const mockScans = Array.from({ length: 20 }).map((_, i) => ({
-  id: `scan-${i + 1}`,
-  name: `Scan ${i + 1}`,
-  targets: Math.floor(Math.random() * 10) + 1,
-  status: ["completed", "running", "pending", "failed"][Math.floor(Math.random() * 4)],
-  startTime: new Date(Date.now() - Math.random() * 10000000000).toISOString(),
-  endTime: new Date(Date.now() - Math.random() * 1000000000).toISOString(),
-  progress: Math.floor(Math.random() * 100),
-}))
+import { formatToBucharestTime } from "@/lib/timezone"
+import { ElapsedTimerCell } from "@/components/elapsed-cell"
 
 // Format scan options from form data
 const formatScanOptions = (values: any) => {
-  const scanOptions: any = {};
+  const scanOptions: any = {}
 
   // Add detection technique
   if (values.detectionTechnique) {
     const detectionMapping: Record<string, boolean> = {
-      'syn': values.detectionTechnique === 'syn',
-      'connect': values.detectionTechnique === 'connect',
-      'ack': values.detectionTechnique === 'ack',
-      'window': values.detectionTechnique === 'window',
-      'maimon': values.detectionTechnique === 'maimon',
-      'null': values.detectionTechnique === 'null',
-      'fin': values.detectionTechnique === 'fin',
-      'xmas': values.detectionTechnique === 'xmas'
-    };
+      syn: values.detectionTechnique === "syn",
+      connect: values.detectionTechnique === "connect",
+      ack: values.detectionTechnique === "ack",
+      window: values.detectionTechnique === "window",
+      maimon: values.detectionTechnique === "maimon",
+      null: values.detectionTechnique === "null",
+      fin: values.detectionTechnique === "fin",
+      xmas: values.detectionTechnique === "xmas",
+    }
 
-    scanOptions.tcp_syn_scan = detectionMapping.syn;
-    scanOptions.tcp_ack_scan = detectionMapping.ack;
-    scanOptions.tcp_connect_scan = detectionMapping.connect;
-    scanOptions.tcp_window_scan = detectionMapping.window;
-    scanOptions.tcp_null_scan = detectionMapping.null;
-    scanOptions.tcp_fin_scan = detectionMapping.fin;
-    scanOptions.tcp_xmas_scan = detectionMapping.xmas;
+    scanOptions.tcp_syn_scan = detectionMapping.syn
+    scanOptions.tcp_ack_scan = detectionMapping.ack
+    scanOptions.tcp_connect_scan = detectionMapping.connect
+    scanOptions.tcp_window_scan = detectionMapping.window
+    scanOptions.tcp_null_scan = detectionMapping.null
+    scanOptions.tcp_fin_scan = detectionMapping.fin
+    scanOptions.tcp_xmas_scan = detectionMapping.xmas
   } else {
     // Default to SYN scan if not specified
-    scanOptions.tcp_syn_scan = true;
+    scanOptions.tcp_syn_scan = true
   }
 
   // Add host discovery probes
   if (values.hostDiscoveryProbes) {
-    scanOptions.echo_request = values.hostDiscoveryProbes.includes('echo');
-    scanOptions.timestamp_request = values.hostDiscoveryProbes.includes('timestamp');
-    scanOptions.address_mask_request = values.hostDiscoveryProbes.includes('netmask');
+    scanOptions.echo_request = values.hostDiscoveryProbes.includes("echo")
+    scanOptions.timestamp_request = values.hostDiscoveryProbes.includes("timestamp")
+    scanOptions.address_mask_request = values.hostDiscoveryProbes.includes("netmask")
   }
 
   // Add detection options
   if (values.options) {
-    scanOptions.os_detection = values.options.includes('os-detection');
-    scanOptions.service_version = values.options.includes('version-detection');
-    scanOptions.ssl_scan = values.options.includes('ssl-scan');
-    scanOptions.http_headers = values.options.includes('http-headers');
-    scanOptions.traceroute = values.options.includes('traceroute');
+    scanOptions.os_detection = values.options.includes("os-detection")
+    scanOptions.service_version = values.options.includes("version-detection")
+    scanOptions.ssl_scan = values.options.includes("ssl-scan")
+    scanOptions.http_headers = values.options.includes("http-headers")
+    scanOptions.traceroute = values.options.includes("traceroute")
   }
 
   // Add timing
   if (values.timing) {
-    scanOptions.timing_flag = parseInt(values.timing.replace('T', ''));
+    scanOptions.timing_flag = Number.parseInt(values.timing.replace("T", ""))
   } else {
     // Ensure timing flag is always set with a default value if not specified
-    scanOptions.timing_flag = 3; // Default to T3 (Normal) timing
+    scanOptions.timing_flag = 3 // Default to T3 (Normal) timing
   }
 
   // Add port specifications
-  if (values.portTypes && values.portTypes.includes('tcp')) {
-    if (values.tcpTopPorts && values.tcpTopPorts !== 'disabled') {
-      scanOptions.tcp_ports = `top-${values.tcpTopPorts}`;
+  if (values.portTypes && values.portTypes.includes("tcp")) {
+    if (values.tcpTopPorts && values.tcpTopPorts !== "disabled") {
+      scanOptions.tcp_ports = `top-${values.tcpTopPorts}`
     } else if (values.tcpPorts) {
-      scanOptions.tcp_ports = values.tcpPorts;
+      scanOptions.tcp_ports = values.tcpPorts
     }
   }
 
-  if (values.portTypes && values.portTypes.includes('udp')) {
-    if (values.udpTopPorts && values.udpTopPorts !== 'disabled') {
-      scanOptions.udp_ports = `top-${values.udpTopPorts}`;
+  if (values.portTypes && values.portTypes.includes("udp")) {
+    if (values.udpTopPorts && values.udpTopPorts !== "disabled") {
+      scanOptions.udp_ports = `top-${values.udpTopPorts}`
     } else if (values.udpPorts) {
-      scanOptions.udp_ports = values.udpPorts;
+      scanOptions.udp_ports = values.udpPorts
     }
   }
 
-  return scanOptions;
-};
+  return scanOptions
+}
 
 export default function ScansPage() {
   const router = useRouter()
   const { user } = useAuth()
+  const [scans, setScans] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [isStartScanModalOpen, setIsStartScanModalOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [isReportDialogOpen, setIsReportDialogOpen] = useState(false)
   const [selectedScan, setSelectedScan] = useState<any>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
-  const [isLoading, setIsLoading] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // For testing empty state, uncomment the next line
-  // const scans: typeof mockScans = []
-  const scans = mockScans
+  // Fetch scans data
+  useEffect(() => {
+    async function fetchScans() {
+      try {
+        setIsLoading(true)
+        const data = await scansAPI.getScans()
+        setScans(data)
+      } catch (error) {
+        console.error("Error fetching scans:", error)
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to load scans. Please try again.",
+        })
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchScans()
+  }, [])
 
   const startIndex = (currentPage - 1) * itemsPerPage
   const endIndex = startIndex + itemsPerPage
@@ -127,10 +138,11 @@ export default function ScansPage() {
   const totalPages = Math.ceil(scans.length / itemsPerPage)
 
   const handleScanClick = (scan: any) => {
-    if (scan.status === "running" || scan.status === "pending") {
-      router.push(`/scans/${scan.id}/running`)
+    // status to lowercase
+    if (scan.status.toLowerCase() === "running" || scan.status.toLowerCase() === "pending") {
+      router.push(`/scans/${scan.uuid}/running`)
     } else {
-      router.push(`/scans/${scan.id}`)
+      router.push(`/scans/${scan.uuid}`)
     }
   }
 
@@ -144,74 +156,95 @@ export default function ScansPage() {
     setIsReportDialogOpen(true)
   }
 
-  const confirmDeleteScan = () => {
-    // API call would go here
-    toast({
-      variant: "success",
-      title: "Scan deleted",
-      description: `Scan ${selectedScan.name} has been deleted.`,
-    })
-    setIsDeleteDialogOpen(false)
+  const confirmDeleteScan = async () => {
+    try {
+      await scansAPI.deleteScan(selectedScan.uuid)
+      setScans(scans.filter((scan) => scan.uuid !== selectedScan.uuid))
+      toast({
+        variant: "success",
+        title: "Scan deleted",
+        description: `Scan ${selectedScan.name} has been deleted.`,
+      })
+    } catch (error) {
+      console.error("Error deleting scan:", error)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to delete scan. Please try again.",
+      })
+    } finally {
+      setIsDeleteDialogOpen(false)
+    }
   }
 
-  const confirmGenerateReport = (format: string) => {
-    // API call would go here
-    toast({
-      variant: "success",
-      title: "Report generated",
-      description: `${format.toUpperCase()} report for ${selectedScan.name} has been generated.`,
-    })
-    setIsReportDialogOpen(false)
-    router.push("/reports")
+  const confirmGenerateReport = async (format: string) => {
+    try {
+      await scansAPI.generateReport(selectedScan.uuid, format)
+      toast({
+        variant: "success",
+        title: "Report generated",
+        description: `${format.toUpperCase()} report for ${selectedScan.name} has been generated.`,
+      })
+      router.push("/reports")
+    } catch (error) {
+      console.error("Error generating report:", error)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to generate report. Please try again.",
+      })
+    } finally {
+      setIsReportDialogOpen(false)
+    }
   }
 
   const handleStartScan = async (values: any) => {
     try {
-      setIsLoading(true);
-      
+      setIsSubmitting(true)
+
       // Parse targets from comma-separated string to array
       const targets = values.targets
         .split(/[,\n]/)
         .map((t: string) => t.trim())
-        .filter(Boolean);
+        .filter(Boolean)
 
       // Format scan type
-      const scanType = values.scanType;
-      
+      const scanType = values.scanType
+
       // Format scan options
-      const scanOptions = formatScanOptions(values);
+      const scanOptions = formatScanOptions(values)
 
       // Prepare payload for API
       const payload = {
         targets,
         type: scanType,
-        scan_options: scanOptions
-      };
+        scan_options: scanOptions,
+      }
 
-      console.log('Sending scan request:', payload);
+      console.log("Sending scan request:", payload)
 
       // Use the scansAPI helper which handles authentication
-      const data = await scansAPI.startScan(payload);
-      
+      const data = await scansAPI.startScan(payload)
+
       toast({
         title: "Scan started",
         description: "Your scan has been started successfully.",
         variant: "success",
-      });
-      
+      })
+
       // Redirect to running scan page
-      router.push(`/scans/${data.scan_uuid}/running`);
+      router.push(`/scans/${data.scan_uuid}/running`)
     } catch (error) {
-      console.error('Error starting scan:', error);
+      console.error("Error starting scan:", error)
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to start scan",
-        variant: "error",
-      });
+        variant: "destructive",
+      })
     } finally {
       // Always close the modal and set loading to false, regardless of success or error
-      setIsStartScanModalOpen(false);
-      setIsLoading(false);
+      setIsStartScanModalOpen(false)
+      setIsSubmitting(false)
     }
   }
 
@@ -221,13 +254,37 @@ export default function ScansPage() {
       title: "Name",
       sortable: true,
       filterable: true,
+      render: (row: any) => row.name,
     },
     {
       key: "targets",
       title: "Targets",
       sortable: true,
       filterable: true,
-    },
+      render: (row: any) => {
+        let targets = row.targets
+        if (typeof targets === "string") {
+          try {
+            targets = JSON.parse(targets)
+          } catch {
+            targets = [targets]
+          }
+        }
+        if (!Array.isArray(targets)) {
+          targets = [targets]
+        }
+    
+        const lines = targets.length > 3
+          ? [...targets.slice(0, 3), "..."]
+          : targets
+    
+        return (
+          <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.4 }}>
+            {lines.join("\n")}
+          </div>
+        )
+      },
+    },    
     {
       key: "status",
       title: "Status",
@@ -237,35 +294,50 @@ export default function ScansPage() {
         <div className="flex items-center">
           <div
             className={`h-2 w-2 rounded-full mr-2 ${
-              row.status === "completed"
+              row.status.toLowerCase() === "completed"
                 ? "bg-green-500"
-                : row.status === "running"
+                : row.status.toLowerCase() === "running"
                   ? "bg-blue-500"
-                  : row.status === "pending"
+                  : row.status.toLowerCase() === "pending"
                     ? "bg-yellow-500"
                     : "bg-red-500"
             }`}
           />
-          <span className="capitalize">{row.status}</span>
+          <span className="capitalize">{row.status.toLowerCase()}</span>
         </div>
       ),
     },
     {
-      key: "startTime",
+      key: "created_at",
       title: "Start Time",
       sortable: true,
       filterable: true,
       filterType: "date" as const,
-      render: (row: any) => new Date(row.startTime).toLocaleString(),
+      render: (row: any) => formatToBucharestTime(row.created_at),
     },
     {
-      key: "endTime",
+      key: "finished_at",
       title: "End Time",
       sortable: true,
       filterable: true,
       filterType: "date" as const,
       render: (row: any) =>
-        row.status === "completed" || row.status === "failed" ? new Date(row.endTime).toLocaleString() : "-",
+        row.status.toLowerCase() === "completed" || row.status.toLowerCase() === "failed"
+          ? formatToBucharestTime(row.finished_at)
+          : "-",
+    },
+    {
+      key: "duration",
+      title: "Duration",
+      sortable: true,
+      filterable: true,
+      render: (row: any) => (
+        <ElapsedTimerCell
+          startedAt={row.started_at}
+          finishedAt={row.finished_at}
+          status={row.status}
+        />
+      )
     },
     {
       key: "actions",
@@ -284,7 +356,7 @@ export default function ScansPage() {
                 e.stopPropagation()
                 handleGenerateReport(row)
               }}
-              disabled={row.status !== "completed"}
+              disabled={row.status.toLowerCase() !== "completed"}
             >
               <FileText className="mr-2 h-4 w-4" />
               Generate Report
@@ -295,6 +367,7 @@ export default function ScansPage() {
                 handleDeleteScan(row)
               }}
               className="text-red-600"
+              disabled={row.status.toLowerCase() === "running" || row.status.toLowerCase() === "pending"}
             >
               <Trash2 className="mr-2 h-4 w-4" />
               Delete Scan
@@ -305,6 +378,17 @@ export default function ScansPage() {
     },
   ]
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-[400px]">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading scans...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6 w-full">
       <div className="flex items-center justify-between">
@@ -312,7 +396,7 @@ export default function ScansPage() {
           <h1 className="text-3xl font-bold tracking-tight">Scans</h1>
           <p className="text-muted-foreground">Manage and view your network scans</p>
         </div>
-        <Button onClick={() => setIsStartScanModalOpen(true)} disabled={isLoading}>
+        <Button onClick={() => setIsStartScanModalOpen(true)} disabled={isSubmitting}>
           <Plus className="mr-2 h-4 w-4" /> Start New Scan
         </Button>
       </div>
@@ -330,7 +414,7 @@ export default function ScansPage() {
                 <p className="text-muted-foreground mt-2 mb-6">
                   You haven't run any network scans yet. Start your first scan to begin discovering network information.
                 </p>
-                <Button onClick={() => setIsStartScanModalOpen(true)} disabled={isLoading}>
+                <Button onClick={() => setIsStartScanModalOpen(true)} disabled={isSubmitting}>
                   <Plus className="mr-2 h-4 w-4" /> Start New Scan
                 </Button>
               </div>

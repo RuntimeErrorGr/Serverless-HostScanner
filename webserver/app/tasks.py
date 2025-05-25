@@ -36,6 +36,16 @@ def update_scan_status(scan_uuid, status, db):
     if status == ScanStatus.RUNNING and scan.status != ScanStatus.RUNNING:
         scan.started_at = now_utc()
     elif status in (ScanStatus.COMPLETED, ScanStatus.FAILED) and scan.finished_at is None:
+        # get total number of completed/failed scans for the user
+        total_scans = (
+            db.query(Scan)
+            .filter(
+                Scan.user_id == scan.user_id,
+                Scan.status.in_([ScanStatus.COMPLETED, ScanStatus.FAILED])
+            )
+            .count()
+        )
+        scan.name = "Results report no. " + str(total_scans + 1)
         scan.finished_at = now_utc()
         # Send final progress
         try:

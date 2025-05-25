@@ -1,11 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { DataTable } from "@/components/data-table/data-table"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import {
   Pagination,
   PaginationContent,
@@ -24,37 +23,42 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { MoreHorizontal, Trash2, AlertTriangle } from "lucide-react"
+import { MoreHorizontal, Trash2, AlertTriangle, Loader2 } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
 import { Badge } from "@/components/ui/badge"
-
-// Mock data for findings
-const mockFindings = Array.from({ length: 20 }).map((_, i) => ({
-  id: `finding-${i + 1}`,
-  target_id: `target-${Math.floor(Math.random() * 10) + 1}`,
-  target_name: `target-${Math.floor(Math.random() * 10) + 1}`,
-  port: [80, 443, 22, 21, 3389, 8080, 25, 53][Math.floor(Math.random() * 8)],
-  port_state: "open",
-  protocol: ["tcp", "udp"][Math.floor(Math.random() * 2)],
-  service: ["http", "https", "ssh", "ftp", "rdp", "http-proxy", "smtp", "dns"][Math.floor(Math.random() * 8)],
-  script_results: Math.random() > 0.5 ? "Vulnerable to CVE-2021-44228" : "SSL certificate expires in 30 days",
-  description: `This is a detailed description of finding ${i + 1}. It explains the vulnerability or issue found during the scan.`,
-  recommendations: `To fix this issue, you should update the software to the latest version or apply the security patch.`,
-  created_at: new Date(Date.now() - Math.random() * 10000000000).toISOString(),
-  updated_at: new Date(Date.now() - Math.random() * 1000000000).toISOString(),
-  severity: ["critical", "high", "medium", "low", "info"][Math.floor(Math.random() * 5)],
-}))
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { findingsAPI } from "@/lib/api"
 
 export default function FindingsPage() {
   const router = useRouter()
+  const [findings, setFindings] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [selectedFinding, setSelectedFinding] = useState<any>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
 
-  // For testing empty state, uncomment the next line
-  // const findings: typeof mockFindings = []
-  const findings = mockFindings
+  // Fetch findings data
+  useEffect(() => {
+    async function fetchFindings() {
+      try {
+        setIsLoading(true)
+        const data = await findingsAPI.getFindings()
+        setFindings(data)
+      } catch (error) {
+        console.error("Error fetching findings:", error)
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to load findings. Please try again.",
+        })
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchFindings()
+  }, [])
 
   const startIndex = (currentPage - 1) * itemsPerPage
   const endIndex = startIndex + itemsPerPage
@@ -70,18 +74,29 @@ export default function FindingsPage() {
     setIsDeleteDialogOpen(true)
   }
 
-  const confirmDeleteFinding = () => {
-    // API call would go here
-    toast({
-      variant: "success",
-      title: "Finding deleted",
-      description: `Finding for ${selectedFinding.target_name} has been deleted.`,
-    })
-    setIsDeleteDialogOpen(false)
+  const confirmDeleteFinding = async () => {
+    try {
+      await findingsAPI.deleteFinding(selectedFinding.id)
+      setFindings(findings.filter((finding) => finding.id !== selectedFinding.id))
+      toast({
+        variant: "success",
+        title: "Finding deleted",
+        description: `Finding has been deleted.`,
+      })
+    } catch (error) {
+      console.error("Error deleting finding:", error)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to delete finding. Please try again.",
+      })
+    } finally {
+      setIsDeleteDialogOpen(false)
+    }
   }
 
   const getSeverityColor = (severity: string) => {
-    switch (severity) {
+    switch (severity?.toLowerCase()) {
       case "critical":
         return "bg-red-500 hover:bg-red-600"
       case "high":
@@ -90,6 +105,7 @@ export default function FindingsPage() {
         return "bg-yellow-500 hover:bg-yellow-600"
       case "low":
         return "bg-blue-500 hover:bg-blue-600"
+      case "info":
       default:
         return "bg-gray-500 hover:bg-gray-600"
     }
@@ -97,8 +113,8 @@ export default function FindingsPage() {
 
   const columns = [
     {
-      key: "target_name",
-      title: "Target",
+      key: "name",
+      title: "Finding",
       sortable: true,
       filterable: true,
     },
@@ -107,13 +123,7 @@ export default function FindingsPage() {
       title: "Port",
       sortable: true,
       filterable: true,
-    },
-    {
-      key: "protocol",
-      title: "Protocol",
-      sortable: true,
-      filterable: true,
-      render: (row: any) => <span className="capitalize">{row.protocol}</span>,
+      render: (row: any) => (row.port ? `${row.port}/${row.protocol}` : "-"),
     },
     {
       key: "service",
@@ -122,17 +132,13 @@ export default function FindingsPage() {
       filterable: true,
     },
     {
-      key: "script_results",
-      title: "Finding",
-      sortable: true,
-      filterable: true,
-    },
-    {
       key: "severity",
       title: "Severity",
       sortable: true,
       filterable: true,
-      render: (row: any) => <Badge className={getSeverityColor(row.severity)}>{row.severity.toUpperCase()}</Badge>,
+      render: (row: any) => (
+        <Badge className={getSeverityColor(row.severity)}>{row.severity?.toUpperCase() || "UNKNOWN"}</Badge>
+      ),
     },
     {
       key: "created_at",
@@ -169,6 +175,17 @@ export default function FindingsPage() {
       ),
     },
   ]
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-[400px]">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading findings...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6 w-full">

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -14,30 +14,43 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination"
 import { DeleteTargetDialog } from "@/components/delete-target-dialog"
-import { MoreHorizontal, Trash2, TargetIcon, Plus } from "lucide-react"
+import { AddTargetDialog } from "@/components/add-target-dialog"
+import { MoreHorizontal, Trash2, TargetIcon, Plus, Loader2 } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-
-// Mock data for targets - can be empty for testing empty state
-const mockTargets = Array.from({ length: 20 }).map((_, i) => ({
-  id: `target-${i + 1}`,
-  name: `target-${i + 1}`,
-  type: ["hostname", "ip", "url", "range"][Math.floor(Math.random() * 4)],
-  value: ["example.com", "192.168.1.1", "https://example.org", "10.0.0.1-10"][Math.floor(Math.random() * 4)],
-  dateAdded: new Date(Date.now() - Math.random() * 10000000000).toISOString(),
-  totalScans: Math.floor(Math.random() * 10),
-}))
+import { targetsAPI } from "@/lib/api"
 
 export default function TargetsPage() {
   const router = useRouter()
+  const [targets, setTargets] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [selectedTarget, setSelectedTarget] = useState<any>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
 
-  // For testing empty state, uncomment the next line
-  // const targets: typeof mockTargets = []
-  const targets = mockTargets
+  // Fetch targets data
+  useEffect(() => {
+    async function fetchTargets() {
+      try {
+        setIsLoading(true)
+        const data = await targetsAPI.getTargets()
+        setTargets(data)
+      } catch (error) {
+        console.error("Error fetching targets:", error)
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to load targets. Please try again.",
+        })
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchTargets()
+  }, [])
 
   const startIndex = (currentPage - 1) * itemsPerPage
   const endIndex = startIndex + itemsPerPage
@@ -53,14 +66,45 @@ export default function TargetsPage() {
     setIsDeleteDialogOpen(true)
   }
 
-  const confirmDeleteTarget = () => {
-    // API call would go here
-    toast({
-      variant: "success",
-      title: "Target deleted",
-      description: `Target ${selectedTarget.name} has been deleted.`,
-    })
-    setIsDeleteDialogOpen(false)
+  const confirmDeleteTarget = async () => {
+    try {
+      await targetsAPI.deleteTarget(selectedTarget.id)
+      setTargets(targets.filter((target) => target.id !== selectedTarget.id))
+      toast({
+        variant: "success",
+        title: "Target deleted",
+        description: `Target ${selectedTarget.name} has been deleted.`,
+      })
+    } catch (error) {
+      console.error("Error deleting target:", error)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to delete target. Please try again.",
+      })
+    } finally {
+      setIsDeleteDialogOpen(false)
+    }
+  }
+
+  const handleAddTarget = async (data: any) => {
+    try {
+      const newTarget = await targetsAPI.createTarget(data)
+      setTargets([...targets, newTarget])
+      toast({
+        variant: "success",
+        title: "Target added",
+        description: `Target ${data.name} has been added.`,
+      })
+      setIsAddDialogOpen(false)
+    } catch (error) {
+      console.error("Error adding target:", error)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to add target. Please try again.",
+      })
+    }
   }
 
   const columns = [
@@ -71,31 +115,12 @@ export default function TargetsPage() {
       filterable: true,
     },
     {
-      key: "type",
-      title: "Type",
-      sortable: true,
-      filterable: true,
-      render: (row: any) => <span className="capitalize">{row.type}</span>,
-    },
-    {
-      key: "value",
-      title: "Value",
-      sortable: true,
-      filterable: true,
-    },
-    {
-      key: "dateAdded",
+      key: "created_at",
       title: "Date Added",
       sortable: true,
       filterable: true,
       filterType: "date" as const,
-      render: (row: any) => new Date(row.dateAdded).toLocaleString(),
-    },
-    {
-      key: "totalScans",
-      title: "Total Scans",
-      sortable: true,
-      filterable: true,
+      render: (row: any) => new Date(row.created_at).toLocaleString(),
     },
     {
       key: "actions",
@@ -125,6 +150,17 @@ export default function TargetsPage() {
     },
   ]
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-[400px]">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading targets...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6 w-full">
       <div className="flex items-center justify-between">
@@ -132,7 +168,7 @@ export default function TargetsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Targets</h1>
           <p className="text-muted-foreground">Manage and view your scan targets</p>
         </div>
-        <Button>
+        <Button onClick={() => setIsAddDialogOpen(true)}>
           <Plus className="mr-2 h-4 w-4" /> Add Target
         </Button>
       </div>
@@ -150,7 +186,7 @@ export default function TargetsPage() {
                 <p className="text-muted-foreground mt-2 mb-6">
                   You haven't added any targets yet. Add your first target to begin scanning.
                 </p>
-                <Button>
+                <Button onClick={() => setIsAddDialogOpen(true)}>
                   <Plus className="mr-2 h-4 w-4" /> Add Target
                 </Button>
               </div>
@@ -212,6 +248,8 @@ export default function TargetsPage() {
         onConfirm={confirmDeleteTarget}
         target={selectedTarget}
       />
+
+      <AddTargetDialog isOpen={isAddDialogOpen} onClose={() => setIsAddDialogOpen(false)} onConfirm={handleAddTarget} />
     </div>
   )
 }

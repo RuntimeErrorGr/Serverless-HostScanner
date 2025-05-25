@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -14,31 +14,42 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination"
 import { DeleteReportDialog } from "@/components/delete-report-dialog"
-import { MoreHorizontal, Trash2, Download, FileText } from "lucide-react"
+import { MoreHorizontal, Trash2, Download, FileText, Loader2 } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
 import { Badge } from "@/components/ui/badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-
-// Mock data for reports - can be empty for testing empty state
-const mockReports = Array.from({ length: 20 }).map((_, i) => ({
-  id: `report-${i + 1}`,
-  scanId: `scan-${Math.floor(Math.random() * 10) + 1}`,
-  scanName: `Scan ${Math.floor(Math.random() * 10) + 1}`,
-  format: ["json", "csv", "pdf"][Math.floor(Math.random() * 3)],
-  dateGenerated: new Date(Date.now() - Math.random() * 10000000000).toISOString(),
-  lastDownloaded: Math.random() > 0.3 ? new Date(Date.now() - Math.random() * 1000000000).toISOString() : null,
-}))
+import { reportsAPI } from "@/lib/api"
 
 export default function ReportsPage() {
   const router = useRouter()
+  const [reports, setReports] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [selectedReport, setSelectedReport] = useState<any>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
 
-  // For testing empty state, uncomment the next line
-  // const reports: typeof mockReports = []
-  const reports = mockReports
+  // Fetch reports data
+  useEffect(() => {
+    async function fetchReports() {
+      try {
+        setIsLoading(true)
+        const data = await reportsAPI.getReports()
+        setReports(data)
+      } catch (error) {
+        console.error("Error fetching reports:", error)
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to load reports. Please try again.",
+        })
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchReports()
+  }, [])
 
   const startIndex = (currentPage - 1) * itemsPerPage
   const endIndex = startIndex + itemsPerPage
@@ -46,7 +57,7 @@ export default function ReportsPage() {
   const totalPages = Math.ceil(reports.length / itemsPerPage)
 
   const handleScanClick = (report: any) => {
-    router.push(`/scans/${report.scanId}`)
+    router.push(`/scans/${report.scan_id}`)
   }
 
   const handleDeleteReport = (report: any) => {
@@ -54,58 +65,109 @@ export default function ReportsPage() {
     setIsDeleteDialogOpen(true)
   }
 
-  const handleDownloadReport = (report: any) => {
-    // In a real app, this would trigger a download
-    toast({
-      variant: "success",
-      title: "Report downloaded",
-      description: `${report.format.toUpperCase()} report for ${report.scanName} has been downloaded.`,
-    })
+  const handleDownloadReport = async (report: any) => {
+    try {
+      const response = await reportsAPI.downloadReport(report.id)
+
+      if (response.ok) {
+        // Create blob from response
+        const blob = await response.blob()
+
+        // Create download link
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = url
+        a.download = report.name || `report-${report.id}.${report.type.toLowerCase()}`
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+
+        toast({
+          variant: "success",
+          title: "Report downloaded",
+          description: `${report.type} report has been downloaded.`,
+        })
+      } else {
+        throw new Error("Download failed")
+      }
+    } catch (error) {
+      console.error("Error downloading report:", error)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to download report. Please try again.",
+      })
+    }
   }
 
-  const confirmDeleteReport = () => {
-    // API call would go here
-    toast({
-      variant: "success",
-      title: "Report deleted",
-      description: `Report for ${selectedReport.scanName} has been deleted.`,
-    })
-    setIsDeleteDialogOpen(false)
+  const confirmDeleteReport = async () => {
+    try {
+      await reportsAPI.deleteReport(selectedReport.id)
+      setReports(reports.filter((report) => report.id !== selectedReport.id))
+      toast({
+        variant: "success",
+        title: "Report deleted",
+        description: `Report has been deleted.`,
+      })
+    } catch (error) {
+      console.error("Error deleting report:", error)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to delete report. Please try again.",
+      })
+    } finally {
+      setIsDeleteDialogOpen(false)
+    }
   }
 
   const columns = [
     {
-      key: "scanName",
-      title: "Scan",
+      key: "name",
+      title: "Report Name",
       sortable: true,
       filterable: true,
     },
     {
-      key: "format",
+      key: "type",
       title: "Format",
       sortable: true,
       filterable: true,
       render: (row: any) => (
         <Badge variant="outline" className="uppercase">
-          {row.format}
+          {row.type}
         </Badge>
       ),
     },
     {
-      key: "dateGenerated",
+      key: "status",
+      title: "Status",
+      sortable: true,
+      filterable: true,
+      render: (row: any) => (
+        <Badge
+          variant={row.status === "GENERATED" ? "default" : row.status === "PENDING" ? "secondary" : "destructive"}
+        >
+          {row.status}
+        </Badge>
+      ),
+    },
+    {
+      key: "created_at",
       title: "Date Generated",
       sortable: true,
       filterable: true,
       filterType: "date" as const,
-      render: (row: any) => new Date(row.dateGenerated).toLocaleString(),
+      render: (row: any) => new Date(row.created_at).toLocaleString(),
     },
     {
-      key: "lastDownloaded",
+      key: "last_downloaded_at",
       title: "Last Downloaded",
       sortable: true,
       filterable: true,
       filterType: "date" as const,
-      render: (row: any) => (row.lastDownloaded ? new Date(row.lastDownloaded).toLocaleString() : "Never"),
+      render: (row: any) => (row.last_downloaded_at ? new Date(row.last_downloaded_at).toLocaleString() : "Never"),
     },
     {
       key: "actions",
@@ -124,6 +186,7 @@ export default function ReportsPage() {
                 e.stopPropagation()
                 handleDownloadReport(row)
               }}
+              disabled={row.status !== "GENERATED"}
             >
               <Download className="mr-2 h-4 w-4" />
               Download
@@ -143,6 +206,17 @@ export default function ReportsPage() {
       ),
     },
   ]
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-[400px]">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading reports...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6 w-full">

@@ -5,76 +5,87 @@ import { useParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-
-// Mock data for a target
-const mockTargetData = {
-  id: "target-1",
-  name: "example.com",
-  type: "hostname",
-  value: "example.com",
-  dateAdded: new Date(Date.now() - 5000000000).toISOString(),
-  totalScans: 5,
-  scans: [
-    {
-      id: "scan-1",
-      name: "Scan 1",
-      status: "completed",
-      startTime: new Date(Date.now() - 4000000000).toISOString(),
-      endTime: new Date(Date.now() - 3990000000).toISOString(),
-      openPorts: 3,
-    },
-    {
-      id: "scan-2",
-      name: "Scan 2",
-      status: "completed",
-      startTime: new Date(Date.now() - 3000000000).toISOString(),
-      endTime: new Date(Date.now() - 2990000000).toISOString(),
-      openPorts: 4,
-    },
-    {
-      id: "scan-3",
-      name: "Scan 3",
-      status: "completed",
-      startTime: new Date(Date.now() - 2000000000).toISOString(),
-      endTime: new Date(Date.now() - 1990000000).toISOString(),
-      openPorts: 2,
-    },
-    {
-      id: "scan-4",
-      name: "Scan 4",
-      status: "completed",
-      startTime: new Date(Date.now() - 1000000000).toISOString(),
-      endTime: new Date(Date.now() - 990000000).toISOString(),
-      openPorts: 5,
-    },
-    {
-      id: "scan-5",
-      name: "Scan 5",
-      status: "running",
-      startTime: new Date(Date.now() - 100000000).toISOString(),
-      endTime: null,
-      openPorts: 0,
-    },
-  ],
-  ports: [
-    { port: 80, protocol: "tcp", service: "http", count: 5 },
-    { port: 443, protocol: "tcp", service: "https", count: 5 },
-    { port: 22, protocol: "tcp", service: "ssh", count: 3 },
-    { port: 21, protocol: "tcp", service: "ftp", count: 2 },
-    { port: 3389, protocol: "tcp", service: "ms-wbt-server", count: 1 },
-  ],
-}
+import { Loader2 } from "lucide-react"
+import { toast } from "@/components/ui/use-toast"
+import { targetsAPI, scansAPI, findingsAPI } from "@/lib/api"
 
 export default function TargetDetailPage() {
   const params = useParams()
   const targetId = params.id as string
-  const [target, setTarget] = useState(mockTargetData)
+  const [target, setTarget] = useState<any>(null)
+  const [scans, setScans] = useState<any[]>([])
+  const [findings, setFindings] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
-  // Fetch target data
+  // Fetch target data and related information
   useEffect(() => {
-    // In a real app, you would fetch the target data from the API
-    console.log(`Fetching target data for ${targetId}...`)
+    async function fetchTargetData() {
+      try {
+        setIsLoading(true)
+
+        // Fetch target details
+        const targetData = await targetsAPI.getTarget(targetId)
+        setTarget(targetData)
+
+        // Fetch all scans and filter by target
+        const allScans = await scansAPI.getScans()
+        // Filter scans that include this target
+        const targetScans = allScans.filter((scan: any) => {
+          // Parse targets if it's a JSON string
+          let targets = scan.targets
+          if (typeof targets === "string") {
+            try {
+              targets = JSON.parse(targets)
+            } catch {
+              targets = [targets]
+            }
+          }
+          return Array.isArray(targets) ? targets.includes(targetData.name) : targets === targetData.name
+        })
+        setScans(targetScans)
+
+        // Fetch all findings and filter by target
+        const allFindings = await findingsAPI.getFindings()
+        const targetFindings = allFindings.filter((finding: any) => finding.target_id === Number.parseInt(targetId))
+        setFindings(targetFindings)
+      } catch (error) {
+        console.error("Error fetching target data:", error)
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to load target data. Please try again.",
+        })
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    if (targetId) {
+      fetchTargetData()
+    }
   }, [targetId])
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-[400px]">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading target data...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!target) {
+    return (
+      <div className="flex items-center justify-center h-[400px]">
+        <div className="text-center">
+          <h3 className="text-lg font-medium">Target not found</h3>
+          <p className="text-muted-foreground mt-2">The target you're looking for doesn't exist or has been deleted.</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6 w-full">
@@ -88,22 +99,18 @@ export default function TargetDetailPage() {
           <CardTitle>Target Information</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Type</p>
-              <p className="mt-1 capitalize">{target.type}</p>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Value</p>
-              <p className="mt-1">{target.value}</p>
+              <p className="text-sm font-medium text-muted-foreground">Name</p>
+              <p className="mt-1">{target.name}</p>
             </div>
             <div>
               <p className="text-sm font-medium text-muted-foreground">Date Added</p>
-              <p className="mt-1">{new Date(target.dateAdded).toLocaleString()}</p>
+              <p className="mt-1">{new Date(target.created_at).toLocaleString()}</p>
             </div>
             <div>
               <p className="text-sm font-medium text-muted-foreground">Total Scans</p>
-              <p className="mt-1">{target.totalScans}</p>
+              <p className="mt-1">{scans.length}</p>
             </div>
           </div>
         </CardContent>
@@ -111,8 +118,8 @@ export default function TargetDetailPage() {
 
       <Tabs defaultValue="scans">
         <TabsList>
-          <TabsTrigger value="scans">Scan History</TabsTrigger>
-          <TabsTrigger value="ports">Discovered Ports</TabsTrigger>
+          <TabsTrigger value="scans">Scan History ({scans.length})</TabsTrigger>
+          <TabsTrigger value="findings">Findings ({findings.length})</TabsTrigger>
         </TabsList>
         <TabsContent value="scans">
           <Card>
@@ -120,72 +127,102 @@ export default function TargetDetailPage() {
               <CardTitle>Scan History</CardTitle>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Scan Name</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Start Time</TableHead>
-                    <TableHead>End Time</TableHead>
-                    <TableHead>Open Ports</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {target.scans.map((scan) => (
-                    <TableRow key={scan.id} className="cursor-pointer hover:bg-muted/50">
-                      <TableCell>{scan.name}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center">
-                          <div
-                            className={`h-2 w-2 rounded-full mr-2 ${
-                              scan.status === "completed"
-                                ? "bg-green-500"
-                                : scan.status === "running"
-                                  ? "bg-blue-500"
-                                  : scan.status === "pending"
-                                    ? "bg-yellow-500"
-                                    : "bg-red-500"
-                            }`}
-                          />
-                          <span className="capitalize">{scan.status}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>{new Date(scan.startTime).toLocaleString()}</TableCell>
-                      <TableCell>{scan.endTime ? new Date(scan.endTime).toLocaleString() : "-"}</TableCell>
-                      <TableCell>{scan.openPorts}</TableCell>
+              {scans.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Scan Name</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Start Time</TableHead>
+                      <TableHead>End Time</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {scans.map((scan) => (
+                      <TableRow key={scan.uuid} className="cursor-pointer hover:bg-muted/50">
+                        <TableCell>{scan.name}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center">
+                            <div
+                              className={`h-2 w-2 rounded-full mr-2 ${
+                                scan.status === "COMPLETED"
+                                  ? "bg-green-500"
+                                  : scan.status === "RUNNING"
+                                    ? "bg-blue-500"
+                                    : scan.status === "PENDING"
+                                      ? "bg-yellow-500"
+                                      : "bg-red-500"
+                              }`}
+                            />
+                            <span className="capitalize">{scan.status.toLowerCase()}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="capitalize">{scan.type?.toLowerCase()}</TableCell>
+                        <TableCell>{new Date(scan.created_at).toLocaleString()}</TableCell>
+                        <TableCell>{scan.finished_at ? new Date(scan.finished_at).toLocaleString() : "-"}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">No scans found for this target</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
-        <TabsContent value="ports">
+        <TabsContent value="findings">
           <Card>
             <CardHeader>
-              <CardTitle>Discovered Ports</CardTitle>
+              <CardTitle>Security Findings</CardTitle>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Port</TableHead>
-                    <TableHead>Protocol</TableHead>
-                    <TableHead>Service</TableHead>
-                    <TableHead>Times Discovered</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {target.ports.map((port, index) => (
-                    <TableRow key={index}>
-                      <TableCell>{port.port}</TableCell>
-                      <TableCell>{port.protocol}</TableCell>
-                      <TableCell>{port.service}</TableCell>
-                      <TableCell>{port.count}</TableCell>
+              {findings.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Finding</TableHead>
+                      <TableHead>Severity</TableHead>
+                      <TableHead>Port</TableHead>
+                      <TableHead>Service</TableHead>
+                      <TableHead>Date Found</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {findings.map((finding) => (
+                      <TableRow key={finding.id} className="cursor-pointer hover:bg-muted/50">
+                        <TableCell>{finding.name}</TableCell>
+                        <TableCell>
+                          <span
+                            className={`px-2 py-1 rounded text-xs font-medium ${
+                              finding.severity === "CRITICAL"
+                                ? "bg-red-100 text-red-800"
+                                : finding.severity === "HIGH"
+                                  ? "bg-orange-100 text-orange-800"
+                                  : finding.severity === "MEDIUM"
+                                    ? "bg-yellow-100 text-yellow-800"
+                                    : finding.severity === "LOW"
+                                      ? "bg-blue-100 text-blue-800"
+                                      : "bg-gray-100 text-gray-800"
+                            }`}
+                          >
+                            {finding.severity}
+                          </span>
+                        </TableCell>
+                        <TableCell>{finding.port ? `${finding.port}/${finding.protocol}` : "-"}</TableCell>
+                        <TableCell>{finding.service || "-"}</TableCell>
+                        <TableCell>{new Date(finding.created_at).toLocaleString()}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">No findings found for this target</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

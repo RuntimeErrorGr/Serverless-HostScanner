@@ -215,7 +215,7 @@ export default function PendingRunningScanPage() {
       <Card>
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
-            <CardTitle>Scan Progress</CardTitle>
+            <CardTitle>Scan Summary</CardTitle>
             <Badge variant={scan.status === "running" ? "default" : scan.status === "completed" ? "secondary" : "outline"}>
               {scan.status === "running" || (scan.status === "pending" && progress > 0) ? (
                 <span className="flex items-center">

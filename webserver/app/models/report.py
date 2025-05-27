@@ -4,6 +4,7 @@ from app.database.base_class import Base
 from app.utils.timezone import now_utc
 from sqlalchemy import Enum as SqlEnum
 from enum import Enum
+import uuid
 
 class ReportStatus(Enum):
     PENDING = "pending"
@@ -19,6 +20,7 @@ class Report(Base):
     __tablename__ = 'reports'
 
     id = Column(Integer, primary_key=True)
+    uuid = Column(String(36), default=lambda: str(uuid.uuid4()))
     name = Column(String(255))
     
     status = Column(SqlEnum(ReportStatus), default=ReportStatus.PENDING)

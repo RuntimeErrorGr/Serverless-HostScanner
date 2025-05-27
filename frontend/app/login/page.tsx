@@ -53,19 +53,19 @@ export default function LoginPage() {
       <div className="relative z-10 flex flex-col items-center justify-center min-h-screen p-4">
         <div className="mb-8 flex items-center">
           <Shield className="h-12 w-12 mr-4" />
-          <h1 className="text-4xl font-bold">Network Scanner</h1>
+          <h1 className="text-4xl font-bold">Host Scanner</h1>
         </div>
 
         <Card className="w-full max-w-md bg-black/60 backdrop-blur-md border-gray-800">
           <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl font-bold text-center text-white drop-shadow">Secure Access Portal</CardTitle>
+            <CardTitle className="text-2xl font-bold text-center text-white drop-shadow">Secure Access</CardTitle>
             <CardDescription className="text-center">This platform provides network scanning capabilities for security professionals.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <div className="grid grid-cols-3 gap-4 py-4">
               <div className="flex flex-col items-center text-center">
                 <Scan className="h-8 w-8 mb-2 text-blue-400" />
-                <span className="text-xs text-white drop-shadow">Advanced Scanning</span>
+                <span className="text-xs text-white drop-shadow">Advanced Scanning and Reporting</span>
               </div>
               <div className="flex flex-col items-center text-center">
                 <Database className="h-8 w-8 mb-2 text-blue-400" />
@@ -85,7 +85,7 @@ export default function LoginPage() {
           </CardFooter>
         </Card>
 
-        <p className="mt-8 text-sm text-gray-500">© 2025 Network Scanner. All rights reserved.</p>
+        <p className="mt-8 text-sm text-gray-500">© 2025 Host Scanner. All rights reserved.</p>
       </div>
     </div>
   )

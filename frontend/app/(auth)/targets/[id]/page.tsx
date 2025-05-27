@@ -1,21 +1,61 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Loader2 } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { DeleteTargetDialog } from "@/components/delete-target-dialog"
+import { Loader2, ArrowLeft, Trash2 } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
 import { targetsAPI, scansAPI, findingsAPI } from "@/lib/api"
+import { formatToBucharestTime } from "@/lib/timezone"
+
+const getSeverityColor = (severity: string) => {
+  switch (severity?.toLowerCase()) {
+    case "critical":
+      return "bg-red-500 hover:bg-red-600"
+    case "high":
+      return "bg-orange-500 hover:bg-orange-600"
+    case "medium":
+      return "bg-yellow-500 hover:bg-yellow-600"
+    case "low":
+      return "bg-blue-500 hover:bg-blue-600"
+    case "info":
+    default:
+      return "bg-gray-500 hover:bg-gray-600"
+  }
+}
+
+const getSeverityTextColor = (severity: string) => {
+  switch (severity?.toLowerCase()) {
+    case "critical":
+      return "text-white"
+    case "high":
+      return "text-white"
+    case "medium":
+      return "text-white"
+    case "low":
+      return "text-white"
+    case "info":
+    default:
+      return "text-white"
+  }
+}
 
 export default function TargetDetailPage() {
   const params = useParams()
-  const targetId = params.id as string
+  const router = useRouter()
+  const targetUuid = params.id as string
   const [target, setTarget] = useState<any>(null)
   const [scans, setScans] = useState<any[]>([])
   const [findings, setFindings] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [flagInfo, setFlagInfo] = useState<{ country: string, flag_url: string } | null>(null)
+
 
   // Fetch target data and related information
   useEffect(() => {
@@ -24,8 +64,11 @@ export default function TargetDetailPage() {
         setIsLoading(true)
 
         // Fetch target details
-        const targetData = await targetsAPI.getTarget(targetId)
+        const targetData = await targetsAPI.getTarget(targetUuid)
         setTarget(targetData)
+        // Fetch flag info
+        const flagInfo = await targetsAPI.getTargetFlag(targetUuid)
+        setFlagInfo(flagInfo)
 
         // Fetch all scans and filter by target
         const allScans = await scansAPI.getScans()
@@ -44,9 +87,8 @@ export default function TargetDetailPage() {
         })
         setScans(targetScans)
 
-        // Fetch all findings and filter by target
-        const allFindings = await findingsAPI.getFindings()
-        const targetFindings = allFindings.filter((finding: any) => finding.target_id === Number.parseInt(targetId))
+        // Fetch findings for this target
+        const targetFindings = await findingsAPI.getFindingsByTarget(targetUuid)
         setFindings(targetFindings)
       } catch (error) {
         console.error("Error fetching target data:", error)
@@ -60,10 +102,41 @@ export default function TargetDetailPage() {
       }
     }
 
-    if (targetId) {
+    if (targetUuid) {
       fetchTargetData()
     }
-  }, [targetId])
+  }, [targetUuid])
+
+  const handleScanClick = (scanUuid: string, status: string) => {
+    if (status === "completed" || status === "failed") {
+      router.push(`/scans/${scanUuid}`)
+    } else {
+      router.push(`/scans/${scanUuid}/running`)
+    }
+  }
+
+  const handleFindingClick = (findingUuid: string) => {
+    router.push(`/findings/${findingUuid}`)
+  }
+
+  const handleDeleteTarget = async () => {
+    try {
+      await targetsAPI.deleteTarget(targetUuid)
+      toast({
+        variant: "success",
+        title: "Target deleted",
+        description: "The target has been deleted successfully.",
+      })
+      router.push("/targets")
+    } catch (error) {
+      console.error("Error deleting target:", error)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to delete target. Please try again.",
+      })
+    }
+  }
 
   if (isLoading) {
     return (
@@ -89,9 +162,17 @@ export default function TargetDetailPage() {
 
   return (
     <div className="space-y-6 w-full">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">{target.name}</h1>
-        <p className="text-muted-foreground">Target details and scan history</p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center">
+          <Button variant="ghost" onClick={() => router.back()} className="mr-4">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back
+          </Button>
+        </div>
+        <Button variant="outline" onClick={() => setIsDeleteDialogOpen(true)}>
+          <Trash2 className="mr-2 h-4 w-4" />
+          Delete
+        </Button>
       </div>
 
       <Card>
@@ -99,14 +180,23 @@ export default function TargetDetailPage() {
           <CardTitle>Target Information</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+          <div className={`grid gap-4 ${flagInfo ? "grid-cols-2 md:grid-cols-4" : "grid-cols-2 md:grid-cols-3"}`}>
             <div>
               <p className="text-sm font-medium text-muted-foreground">Name</p>
               <p className="mt-1">{target.name}</p>
             </div>
+            {flagInfo && (
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Country</p>
+                <div className="mt-1 flex items-center space-x-2">
+                  <img src={flagInfo.flag_url} alt={flagInfo.country} className="w-6 h-4 rounded-sm" />
+                  <span>{flagInfo.country}</span>
+                </div>
+              </div>
+            )}
             <div>
               <p className="text-sm font-medium text-muted-foreground">Date Added</p>
-              <p className="mt-1">{new Date(target.created_at).toLocaleString()}</p>
+              <div className="mt-1">{formatToBucharestTime(target.created_at)}</div>
             </div>
             <div>
               <p className="text-sm font-medium text-muted-foreground">Total Scans</p>
@@ -140,17 +230,21 @@ export default function TargetDetailPage() {
                   </TableHeader>
                   <TableBody>
                     {scans.map((scan) => (
-                      <TableRow key={scan.uuid} className="cursor-pointer hover:bg-muted/50">
-                        <TableCell>{scan.name}</TableCell>
+                      <TableRow
+                        key={scan.uuid}
+                        className="cursor-pointer hover:bg-muted/50 transition-colors"
+                        onClick={() => handleScanClick(scan.uuid, scan.status)}
+                      >
+                        <TableCell className="font-medium">{scan.name}</TableCell>
                         <TableCell>
                           <div className="flex items-center">
                             <div
                               className={`h-2 w-2 rounded-full mr-2 ${
-                                scan.status === "COMPLETED"
+                                scan.status.toLowerCase() === "completed"
                                   ? "bg-green-500"
-                                  : scan.status === "RUNNING"
+                                  : scan.status.toLowerCase() === "running"
                                     ? "bg-blue-500"
-                                    : scan.status === "PENDING"
+                                    : scan.status.toLowerCase() === "pending"
                                       ? "bg-yellow-500"
                                       : "bg-red-500"
                               }`}
@@ -159,8 +253,10 @@ export default function TargetDetailPage() {
                           </div>
                         </TableCell>
                         <TableCell className="capitalize">{scan.type?.toLowerCase()}</TableCell>
-                        <TableCell>{new Date(scan.created_at).toLocaleString()}</TableCell>
-                        <TableCell>{scan.finished_at ? new Date(scan.finished_at).toLocaleString() : "-"}</TableCell>
+                        <TableCell>{formatToBucharestTime(scan.started_at)}</TableCell>
+                        <TableCell>
+                          {scan.finished_at ? formatToBucharestTime(scan.finished_at) : <span>-</span>}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -192,28 +288,22 @@ export default function TargetDetailPage() {
                   </TableHeader>
                   <TableBody>
                     {findings.map((finding) => (
-                      <TableRow key={finding.id} className="cursor-pointer hover:bg-muted/50">
-                        <TableCell>{finding.name}</TableCell>
+                      <TableRow
+                        key={finding.uuid}
+                        className="cursor-pointer hover:bg-muted/50 transition-colors"
+                        onClick={() => handleFindingClick(finding.uuid)}
+                      >
+                        <TableCell className="font-medium">{finding.name}</TableCell>
                         <TableCell>
-                          <span
-                            className={`px-2 py-1 rounded text-xs font-medium ${
-                              finding.severity === "CRITICAL"
-                                ? "bg-red-100 text-red-800"
-                                : finding.severity === "HIGH"
-                                  ? "bg-orange-100 text-orange-800"
-                                  : finding.severity === "MEDIUM"
-                                    ? "bg-yellow-100 text-yellow-800"
-                                    : finding.severity === "LOW"
-                                      ? "bg-blue-100 text-blue-800"
-                                      : "bg-gray-100 text-gray-800"
-                            }`}
-                          >
-                            {finding.severity}
-                          </span>
+                          <Badge className={getSeverityColor(finding.severity)}>
+                            <span className={`font-bold ${getSeverityTextColor(finding.severity)}`}>
+                              {finding.severity?.toUpperCase() || "UNKNOWN"}
+                            </span>
+                          </Badge>
                         </TableCell>
                         <TableCell>{finding.port ? `${finding.port}/${finding.protocol}` : "-"}</TableCell>
-                        <TableCell>{finding.service || "-"}</TableCell>
-                        <TableCell>{new Date(finding.created_at).toLocaleString()}</TableCell>
+                        <TableCell>{finding.service?.toUpperCase() || "-"}</TableCell>
+                        <TableCell>{formatToBucharestTime(finding.created_at)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -227,6 +317,13 @@ export default function TargetDetailPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <DeleteTargetDialog
+        isOpen={isDeleteDialogOpen}
+        onClose={() => setIsDeleteDialogOpen(false)}
+        onConfirm={handleDeleteTarget}
+        target={target}
+      />
     </div>
   )
 }

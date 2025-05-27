@@ -3,6 +3,7 @@ import asyncio
 import json
 import redis
 import requests
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Request, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi_keycloak import OIDCUser
@@ -25,6 +26,19 @@ router = APIRouter()
 
 log = get_logger(__name__)
 
+
+def clean_target_list(targets):
+    cleaned = []
+
+    for target in targets:
+        if target.startswith("http://") or target.startswith("https://"):
+            parsed = urlparse(target)
+            target = parsed.netloc or parsed.path
+        target = target.rstrip("/")
+        if target:
+            cleaned.append(target)
+
+    return list(set(cleaned))
 
 @router.get("/")
 def index(user: OIDCUser = Depends(idp.get_current_user()), db: Session = Depends(get_db)):
@@ -230,13 +244,14 @@ def start_scan(
     user: OIDCUser = Depends(idp.get_current_user()),
     db: Session = Depends(get_db),
 ):
+    
     # 1. Parse data
     targets = request.targets
     scan_type = request.type
     scan_options = request.scan_options
 
     payload = {
-        "targets": targets,
+        "targets": clean_target_list(targets),
         "scan_type": scan_type,
         "scan_options": scan_options,
         "scan_id": str(uuid.uuid4())
@@ -279,8 +294,10 @@ def get_scan_by_uuid(
     if scan.user_id != db_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to access this scan")
     
-    # Get the target names
-    target_names = [target.name for target in scan.targets]
+    # Get the target names and uuids
+    # target_names = [target.name for target in scan.targets]
+
+    targets = [{"name": target.name, "uuid": target.uuid} for target in scan.targets]
     
     # Parse scan results if available
     scan_results = []
@@ -323,7 +340,7 @@ def get_scan_by_uuid(
         "parameters": scan.parameters,
         "output": current_output,  # Use real-time output when available
         "result": scan_results,
-        "targets": target_names,
+        "targets": targets,
         "created_at": scan.created_at,
         "started_at": scan.started_at,
         "finished_at": scan.finished_at
@@ -412,6 +429,126 @@ def get_findings_by_scan_uuid(
     return {"data": findings_data}
 
 
+@router.post("/{scan_uuid}/report")
+def generate_report(
+    scan_uuid: str,
+    report_data: dict,
+    user: OIDCUser = Depends(idp.get_current_user()),
+    db: Session = Depends(get_db),
+):
+    """
+    Generate a report for a specific scan.
+    """
+    from app.models.report import Report, ReportType, ReportStatus
+    
+    # Get the user from db with the keycloak_uuid
+    db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+    
+    # Find the scan
+    scan = db.query(Scan).filter_by(uuid=scan_uuid).first()
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    
+    # Check if the scan belongs to the user
+    if scan.user_id != db_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to access this scan")
+    
+    # Check if scan is completed
+    if scan.status != ScanStatus.COMPLETED:
+        raise HTTPException(status_code=400, detail="Cannot generate report for incomplete scan")
+    
+    # Parse report format
+    format_str = report_data.get("format", "json").lower()
+    try:
+        report_type = ReportType(format_str)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid report format: {format_str}")
+    
+    # Create report entry
+    report_name = f"{scan.name} - {format_str.upper()} Report"
+    new_report = Report(
+        name=report_name,
+        type=report_type,
+        status=ReportStatus.PENDING,
+        scan_id=scan.id
+    )
+    
+    db.add(new_report)
+    db.commit()
+    db.refresh(new_report)
+    
+    # TODO: Trigger report generation task (e.g., Celery task)
+    # For now, we'll just mark it as generated
+    # In a real implementation, you would trigger an async task here
+    
+    log.info(f"Report generation requested for scan {scan_uuid} by user {db_user.id}")
+    
+    return {
+        "message": "Report generation started",
+        "report_id": new_report.id,
+        "format": format_str
+    }
+
+
+@router.delete("/{scan_uuid}")
+def delete_scan(
+    scan_uuid: str,
+    user: OIDCUser = Depends(idp.get_current_user()),
+    db: Session = Depends(get_db),
+):
+    """
+    Delete a scan by UUID.
+    """
+    # Get the user from db with the keycloak_uuid
+    db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+    
+    # Find the scan
+    scan = db.query(Scan).filter_by(uuid=scan_uuid).first()
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    
+    # Check if the scan belongs to the user
+    if scan.user_id != db_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this scan")
+    
+    # Check if scan is running or pending - don't allow deletion
+    if scan.status in [ScanStatus.RUNNING, ScanStatus.PENDING]:
+        raise HTTPException(status_code=400, detail="Cannot delete running or pending scan")
+    
+    # Delete the scan (cascade will handle related records)
+    db.delete(scan)
+    db.commit()
+    
+    log.info(f"Scan {scan_uuid} deleted by user {db_user.id}")
+    return {"message": "Scan deleted successfully"}
+
+@router.post("/bulk-delete")
+def bulk_delete_scans(
+    uuids: list[str],
+    user: OIDCUser = Depends(idp.get_current_user()),
+    db: Session = Depends(get_db),
+):
+    """
+    Bulk delete scans by UUIDs.
+    """
+    # Get the user from db with the keycloak_uuid
+    db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+
+    # Fetch all scans to delete
+    scans = db.query(Scan).filter(Scan.uuid.in_(uuids)).all()
+
+    # Ensure all scans belong to the user
+    for scan in scans:
+        if scan.user_id != db_user.id:
+            raise HTTPException(status_code=403, detail=f"Not authorized to delete scan {scan.uuid}")
+        db.delete(scan)
+
+    db.commit()
+
+    log.info(f"Scans {uuids} deleted by user {db_user.id}")
+    return {"message": "Scans deleted successfully"}
+
+
 def create_scan_entry(inserted_targets, db_user, payload, db):
     scan_type = payload.get("scan_type", ScanType.DEFAULT)
     scan_options = payload.get("scan_options", {})
@@ -423,9 +560,14 @@ def create_scan_entry(inserted_targets, db_user, payload, db):
     if len(targets) > 3:
         target_summary += f" and {len(targets) - 3} more"
     
-    # get tatal number of running/pending scans for the user
-    total_scans = db.query(Scan).filter(Scan.user_id == db_user.id).count()
-    scan_name = f"Assessment no. {total_scans + 1}"
+    # get all scans names for running/pending scans for the user
+    scans = db.query(Scan).filter(Scan.user_id == db_user.id, Scan.status.in_([ScanStatus.RUNNING, ScanStatus.PENDING])).all()
+    scan_names = [scan.name for scan in scans]
+    if scan_names:
+        highest_number = max([int(name.split(" ")[-1]) for name in scan_names if name.startswith("Assessment no.")])
+        scan_name = f"Assessment no. {highest_number + 1}"
+    else:
+        scan_name = "Assessment no. 1"
 
     new_scan = Scan(
         user_id=db_user.id,
@@ -498,6 +640,10 @@ def get_or_create_targets(target_names, db_user, db):
     For each target name, get the existing Target for this user or create a new one.
     Returns a list of Target objects.
     """
+    # remove duplicates from targets
+    target_names = list(set(target_names))
+    # remove empty targets
+    target_names = [target for target in target_names if target]
     inserted_targets = []
     for target_name in target_names:
         existing = db.query(Target).filter_by(user_id=db_user.id, name=target_name).first()

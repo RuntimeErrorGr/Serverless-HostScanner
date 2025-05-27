@@ -30,7 +30,7 @@ export default function AdminXPage() {
         </CardHeader>
         <CardContent>
           <p className="mb-4">
-            AdminX provides advanced administrative tools for managing the Network Scanner platform. Click the button
+            AdminX provides advanced administrative tools for managing the Host Scanner platform. Click the button
             below to access the external AdminX portal.
           </p>
           <Button>

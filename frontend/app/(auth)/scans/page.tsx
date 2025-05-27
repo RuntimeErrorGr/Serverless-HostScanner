@@ -16,12 +16,15 @@ import {
 import { StartScanModal } from "@/components/start-scan-modal"
 import { DeleteScanDialog } from "@/components/delete-scan-dialog"
 import { GenerateReportDialog } from "@/components/generate-report-dialog"
+import { BulkDeleteDialog } from "@/components/bulk-delete-dialog"
 import { Plus, MoreHorizontal, FileText, Trash2, Search, Loader2 } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useAuth } from "@/components/auth-provider"
 import { scansAPI } from "@/lib/api"
 import { ElapsedTimerCell } from "@/components/elapsed-cell"
+import { formatToBucharestTime } from "@/lib/timezone"
+import { Checkbox } from "@/components/ui/checkbox"
 
 // Format scan options from form data
 const formatScanOptions = (values: any) => {
@@ -103,11 +106,14 @@ export default function ScansPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isStartScanModalOpen, setIsStartScanModalOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false)
   const [isReportDialogOpen, setIsReportDialogOpen] = useState(false)
   const [selectedScan, setSelectedScan] = useState<any>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [selectedScans, setSelectedScans] = useState<string[]>([])
+  const [isAllSelected, setIsAllSelected] = useState(false)
 
   // Fetch scans data
   useEffect(() => {
@@ -277,6 +283,54 @@ export default function ScansPage() {
     }
   }
 
+  const handleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedScans([])
+      setIsAllSelected(false)
+    } else {
+      setSelectedScans(scans.map((scan) => scan.uuid))
+      setIsAllSelected(true)
+    }
+  }
+
+  const handleSelectScan = (scanUuid: string) => {
+    setSelectedScans((prev) => {
+      const newSelected = prev.includes(scanUuid) ? prev.filter((id) => id !== scanUuid) : [...prev, scanUuid]
+
+      setIsAllSelected(newSelected.length === scans.length)
+      return newSelected
+    })
+  }
+
+  const handleBulkDelete = () => {
+    if (selectedScans.length === 0) return
+    setIsBulkDeleteDialogOpen(true)
+  }
+
+  const confirmBulkDelete = async () => {
+    try {
+      await scansAPI.bulkDeleteScans(selectedScans)
+      setScans(scans.filter((scan) => !selectedScans.includes(scan.uuid)))
+      setSelectedScans([])
+      setIsAllSelected(false)
+
+      toast({
+        variant: "success",
+        title: "Scans deleted",
+        description: `${selectedScans.length} scan(s) have been deleted.`,
+      })
+    } catch (error) {
+      console.error("Error deleting scans:", error)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to delete scans. Please try again.",
+      })
+    } finally {
+      setIsBulkDeleteDialogOpen(false)
+    }
+  }
+
   const handleStartScan = async (values: any) => {
     try {
       setIsSubmitting(true)
@@ -328,6 +382,18 @@ export default function ScansPage() {
   }
 
   const columns = [
+    {
+      key: "select",
+      title: <Checkbox checked={isAllSelected} onCheckedChange={handleSelectAll} aria-label="Select all" />,
+      render: (row: any) => (
+        <Checkbox
+          checked={selectedScans.includes(row.uuid)}
+          onCheckedChange={() => handleSelectScan(row.uuid)}
+          aria-label={`Select ${row.name}`}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ),
+    },
     {
       key: "name",
       title: "Name",
@@ -391,28 +457,7 @@ export default function ScansPage() {
       sortable: true,
       filterable: true,
       filterType: "date" as const,
-      render: (row: any) => {
-        const date = new Date(row.created_at)
-        return (
-          <div className="flex flex-col">
-            <span className="text-sm font-medium">
-              {date.toLocaleDateString("en-GB", {
-                day: "2-digit",
-                month: "2-digit",
-                year: "numeric",
-                timeZone: "Europe/Bucharest",
-              })}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {date.toLocaleTimeString("en-GB", {
-                hour: "2-digit",
-                minute: "2-digit",
-                timeZone: "Europe/Bucharest",
-              })}
-            </span>
-          </div>
-        )
-      },
+      render: (row: any) => formatToBucharestTime(row.started_at),
     },
     {
       key: "finished_at",
@@ -420,31 +465,7 @@ export default function ScansPage() {
       sortable: true,
       filterable: true,
       filterType: "date" as const,
-      render: (row: any) => {
-        if (row.status.toLowerCase() === "completed" || row.status.toLowerCase() === "failed") {
-          const date = new Date(row.finished_at)
-          return (
-            <div className="flex flex-col">
-              <span className="text-sm font-medium">
-                {date.toLocaleDateString("en-GB", {
-                  day: "2-digit",
-                  month: "2-digit",
-                  year: "numeric",
-                  timeZone: "Europe/Bucharest",
-                })}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {date.toLocaleTimeString("en-GB", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  timeZone: "Europe/Bucharest",
-                })}
-              </span>
-            </div>
-          )
-        }
-        return "-"
-      },
+      render: (row: any) => formatToBucharestTime(row.finished_at),
     },
     {
       key: "duration",
@@ -512,9 +533,17 @@ export default function ScansPage() {
           <h1 className="text-3xl font-bold tracking-tight">Scans</h1>
           <p className="text-muted-foreground">Manage and view your network scans</p>
         </div>
-        <Button onClick={() => setIsStartScanModalOpen(true)} disabled={isSubmitting}>
-          <Plus className="mr-2 h-4 w-4" /> Start New Scan
-        </Button>
+        <div className="flex items-center space-x-2">
+          {selectedScans.length > 0 && (
+            <Button variant="destructive" onClick={handleBulkDelete}>
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete Selected ({selectedScans.length})
+            </Button>
+          )}
+          <Button onClick={() => setIsStartScanModalOpen(true)} disabled={isSubmitting}>
+            <Plus className="mr-2 h-4 w-4" /> Start New Scan
+          </Button>
+        </div>
       </div>
 
       <Card className="w-full">
@@ -564,8 +593,8 @@ export default function ScansPage() {
             <PaginationContent>
               <PaginationItem>
                 <PaginationPrevious
-                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                  disabled={currentPage === 1}
+                  onClick={currentPage === 1 ? undefined : () => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                  className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
                 />
               </PaginationItem>
               {Array.from({ length: totalPages }).map((_, i) => (
@@ -577,8 +606,12 @@ export default function ScansPage() {
               ))}
               <PaginationItem>
                 <PaginationNext
-                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                  disabled={currentPage === totalPages}
+                  onClick={
+                    currentPage === totalPages
+                      ? undefined
+                      : () => setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                  }
+                  className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
                 />
               </PaginationItem>
             </PaginationContent>
@@ -597,6 +630,14 @@ export default function ScansPage() {
         onClose={() => setIsDeleteDialogOpen(false)}
         onConfirm={confirmDeleteScan}
         scan={selectedScan}
+      />
+
+      <BulkDeleteDialog
+        isOpen={isBulkDeleteDialogOpen}
+        onClose={() => setIsBulkDeleteDialogOpen(false)}
+        onConfirm={confirmBulkDelete}
+        itemType="Scan"
+        itemCount={selectedScans.length}
       />
 
       <GenerateReportDialog

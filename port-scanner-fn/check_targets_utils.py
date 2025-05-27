@@ -2,16 +2,18 @@ import json
 import logging
 import ipaddress
 import tempfile
-from dataclasses import dataclass
-from enum import Enum
-from urllib.parse import urlparse
-import xml.etree.ElementTree as ET
 import certifi
 import requests
 import os
 import more_itertools
 import subprocess
 import typing
+import xml.etree.ElementTree as ET
+
+from dataclasses import dataclass
+from enum import Enum
+from urllib.parse import urlparse
+from datetime import datetime
 
 
 def read_ports_file(filename: str) -> str:
@@ -24,13 +26,13 @@ def read_ports_file(filename: str) -> str:
         return ""
 
 
-def get_responding_urls(targets: list) -> tuple[list, set]:
+def get_responding_urls(targets: list) -> tuple[list, list]:
     """
     Targets in url format (e.g. http://example.com) can't be checked with Nmap.
     In this case, a GET request is used.
     Responding URLs are returned along with the rest of the URLs.
     """
-    responding_urls = set()
+    responding_urls = []
     urls = [target for target in targets if urlparse(target).hostname]
 
     for url in urls:
@@ -40,8 +42,7 @@ def get_responding_urls(targets: list) -> tuple[list, set]:
             prepared_request = session.prepare_request(request)
             prepared_request.prepare_url(url, [])
             session.send(prepared_request, verify=certifi.where(), timeout=DefaultValues.REQUEST_TIMEOUT)
-
-            responding_urls.add(url)
+            responding_urls.append(Host(hostname=url, status="up", last_seen=datetime.now().isoformat()))
             logging.debug("Found responding url: %s", url)
         except (requests.exceptions.RequestException, ValueError):
             continue
@@ -499,9 +500,11 @@ class CheckTargetsConfig:
             # ---------------------------
             ports_list: list[dict] = []
             for port_el in host_el.findall("ports/port"):
+
                 port_state_el = port_el.find("state")
                 state = port_state_el.get("state", "") if port_state_el is not None else ""
-
+                reason = port_state_el.get("reason", "") if port_state_el is not None else ""
+                reason_ttl = port_state_el.get("reason_ttl", "") if port_state_el is not None else ""
                 service_el = port_el.find("service")
                 service_dict = {}
                 if service_el is not None:
@@ -520,6 +523,8 @@ class CheckTargetsConfig:
                 port_info: dict[str, typing.Any] = {
                     "port": int(port_el.get("portid", "0")),
                     "protocol": port_el.get("protocol", ""),
+                    "reason": reason,
+                    "reason_ttl": reason_ttl,
                     "state": state,
                     "service": service_dict,
                     "scripts": {},

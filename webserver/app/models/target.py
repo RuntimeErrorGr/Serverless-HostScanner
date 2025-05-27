@@ -3,11 +3,13 @@ from sqlalchemy.orm import relationship
 from app.database.base_class import Base
 from app.utils.timezone import now_utc
 from app.models.scan import scan_target_association
+import uuid
 
 class Target(Base):
     __tablename__ = 'targets'
 
     id = Column(Integer, primary_key=True)
+    uuid = Column(String(36), default=lambda: str(uuid.uuid4()))
     name = Column(String(255))
     user_id = Column(Integer, ForeignKey('users.id'))
     created_at = Column(DateTime, default=now_utc)

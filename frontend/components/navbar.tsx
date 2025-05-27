@@ -25,7 +25,7 @@ export function Navbar() {
           <SidebarTrigger />
         </div>
         <div className="flex-1">
-          <h2 className="text-lg font-semibold md:hidden">Network Scanner</h2>
+          <h2 className="text-lg font-semibold md:hidden">Host Scanner</h2>
         </div>
         <div className="flex items-center gap-4">
           <ThemeToggle />

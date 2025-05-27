@@ -57,7 +57,7 @@ export function AppSidebar() {
         <div className="flex items-center px-4 py-5">
           <div className="flex items-center gap-2 font-semibold text-xl">
             <Target className="h-7 w-7" />
-            <span>Network Scanner</span>
+            <span>Host Scanner</span>
           </div>
           <div className="ml-auto md:hidden">
             <SidebarTrigger />
@@ -84,7 +84,7 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarContent>
       <SidebarFooter className="border-t p-4">
-        <div className="text-sm text-muted-foreground">Network Scanner v1.0</div>
+        <div className="text-sm text-muted-foreground">Host Scanner v1.4</div>
       </SidebarFooter>
     </Sidebar>
   )

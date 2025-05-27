@@ -136,6 +136,8 @@ def handle(event, _):
 
     except Exception as e:
         logging.error(f"Error during scan: {str(e)}")
+        scanner.redis_client.set(f"scan:{scan_id}", json.dumps({"status": "failed"}))
+        scanner.redis_client.set(f"scan:{scan_id}", json.dumps({"progress": 100}))
         return {
             "statusCode": 500,
             "body": json.dumps({"error": str(e), "scan_id": scan_id})

@@ -23,20 +23,26 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { BulkDeleteDialog } from "@/components/bulk-delete-dialog"
 import { MoreHorizontal, Trash2, AlertTriangle, Loader2 } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
 import { Badge } from "@/components/ui/badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Checkbox } from "@/components/ui/checkbox"
 import { findingsAPI } from "@/lib/api"
+import { formatToBucharestTime } from "@/lib/timezone"
 
 export default function FindingsPage() {
   const router = useRouter()
   const [findings, setFindings] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false)
   const [selectedFinding, setSelectedFinding] = useState<any>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
+  const [selectedFindings, setSelectedFindings] = useState<string[]>([])
+  const [isAllSelected, setIsAllSelected] = useState(false)
 
   // Fetch findings data
   useEffect(() => {
@@ -66,7 +72,7 @@ export default function FindingsPage() {
   const totalPages = Math.ceil(findings.length / itemsPerPage)
 
   const handleFindingClick = (finding: any) => {
-    router.push(`/findings/${finding.id}`)
+    router.push(`/findings/${finding.uuid}`)
   }
 
   const handleDeleteFinding = (finding: any) => {
@@ -76,8 +82,8 @@ export default function FindingsPage() {
 
   const confirmDeleteFinding = async () => {
     try {
-      await findingsAPI.deleteFinding(selectedFinding.id)
-      setFindings(findings.filter((finding) => finding.id !== selectedFinding.id))
+      await findingsAPI.deleteFinding(selectedFinding.uuid)
+      setFindings(findings.filter((finding) => finding.uuid !== selectedFinding.uuid))
       toast({
         variant: "success",
         title: "Finding deleted",
@@ -93,6 +99,54 @@ export default function FindingsPage() {
     } finally {
       setIsDeleteDialogOpen(false)
     }
+  }
+
+  const handleBulkDelete = () => {
+    if (selectedFindings.length === 0) return
+    setIsBulkDeleteDialogOpen(true)
+  }
+
+  const confirmBulkDelete = async () => {
+    try {
+      await findingsAPI.bulkDeleteFindings(selectedFindings)
+      setFindings(findings.filter((finding) => !selectedFindings.includes(finding.uuid)))
+      setSelectedFindings([])
+      setIsAllSelected(false)
+
+      toast({
+        variant: "success",
+        title: "Findings deleted",
+        description: `${selectedFindings.length} finding(s) have been deleted.`,
+      })
+    } catch (error) {
+      console.error("Error deleting findings:", error)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to delete findings. Please try again.",
+      })
+    } finally {
+      setIsBulkDeleteDialogOpen(false)
+    }
+  }
+
+  const handleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedFindings([])
+      setIsAllSelected(false)
+    } else {
+      setSelectedFindings(findings.map((finding) => finding.uuid))
+      setIsAllSelected(true)
+    }
+  }
+
+  const handleSelectFinding = (findingUuid: string) => {
+    setSelectedFindings((prev) => {
+      const newSelected = prev.includes(findingUuid) ? prev.filter((id) => id !== findingUuid) : [...prev, findingUuid]
+
+      setIsAllSelected(newSelected.length === findings.length)
+      return newSelected
+    })
   }
 
   const getSeverityColor = (severity: string) => {
@@ -111,7 +165,35 @@ export default function FindingsPage() {
     }
   }
 
+  const getSeverityTextColor = (severity: string) => {
+    switch (severity?.toLowerCase()) {
+      case "critical":
+        return "text-white"
+      case "high":
+        return "text-white"
+      case "medium":
+        return "text-white"
+      case "low":
+        return "text-white"
+      case "info":
+      default:
+        return "text-white"
+    }
+  }
+
   const columns = [
+    {
+      key: "select",
+      title: <Checkbox checked={isAllSelected} onCheckedChange={handleSelectAll} aria-label="Select all" />,
+      render: (row: any) => (
+        <Checkbox
+          checked={selectedFindings.includes(row.uuid)}
+          onCheckedChange={() => handleSelectFinding(row.uuid)}
+          aria-label={`Select ${row.name}`}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ),
+    },
     {
       key: "name",
       title: "Finding",
@@ -130,6 +212,7 @@ export default function FindingsPage() {
       title: "Service",
       sortable: true,
       filterable: true,
+      render: (row: any) => (row.service ? row.service.toUpperCase() : "-"),
     },
     {
       key: "severity",
@@ -137,7 +220,11 @@ export default function FindingsPage() {
       sortable: true,
       filterable: true,
       render: (row: any) => (
-        <Badge className={getSeverityColor(row.severity)}>{row.severity?.toUpperCase() || "UNKNOWN"}</Badge>
+        <Badge className={getSeverityColor(row.severity)}>
+          <span className={`font-bold ${getSeverityTextColor(row.severity)}`}>
+            {row.severity?.toUpperCase() || "UNKNOWN"}
+          </span>
+        </Badge>
       ),
     },
     {
@@ -146,7 +233,7 @@ export default function FindingsPage() {
       sortable: true,
       filterable: true,
       filterType: "date" as const,
-      render: (row: any) => new Date(row.created_at).toLocaleString(),
+      render: (row: any) => formatToBucharestTime(row.created_at),
     },
     {
       key: "actions",
@@ -189,9 +276,17 @@ export default function FindingsPage() {
 
   return (
     <div className="space-y-6 w-full">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Findings</h1>
-        <p className="text-muted-foreground">Security findings and vulnerabilities discovered during scans</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Findings</h1>
+          <p className="text-muted-foreground">Security findings and vulnerabilities discovered during scans</p>
+        </div>
+        {selectedFindings.length > 0 && (
+          <Button variant="destructive" onClick={handleBulkDelete}>
+            <Trash2 className="mr-2 h-4 w-4" />
+            Delete Selected ({selectedFindings.length})
+          </Button>
+        )}
       </div>
 
       <Card className="w-full">
@@ -240,8 +335,8 @@ export default function FindingsPage() {
             <PaginationContent>
               <PaginationItem>
                 <PaginationPrevious
-                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                  disabled={currentPage === 1}
+                  onClick={currentPage === 1 ? undefined : () => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                  className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
                 />
               </PaginationItem>
               {Array.from({ length: totalPages }).map((_, i) => (
@@ -253,8 +348,12 @@ export default function FindingsPage() {
               ))}
               <PaginationItem>
                 <PaginationNext
-                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                  disabled={currentPage === totalPages}
+                  onClick={
+                    currentPage === totalPages
+                      ? undefined
+                      : () => setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                  }
+                  className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
                 />
               </PaginationItem>
             </PaginationContent>
@@ -278,6 +377,14 @@ export default function FindingsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <BulkDeleteDialog
+        isOpen={isBulkDeleteDialogOpen}
+        onClose={() => setIsBulkDeleteDialogOpen(false)}
+        onConfirm={confirmBulkDelete}
+        itemType="Finding"
+        itemCount={selectedFindings.length}
+      />
     </div>
   )
 }

@@ -7,7 +7,7 @@ from .user import UserOut
 
 class TargetBase(BaseModel):
     name: constr(max_length=255)
-
+    uuid: Optional[str] = None
 
 class TargetInDB(TargetBase):
     user_id: int

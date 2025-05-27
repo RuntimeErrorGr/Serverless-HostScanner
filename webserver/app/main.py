@@ -5,6 +5,9 @@ from app.api.dependencies import idp
 from app.api import (
     scan_router,
     auth_router,
+    target_router,
+    finding_router,
+    report_router,
 )
 from app.log import get_logger
 
@@ -22,6 +25,9 @@ api_app.add_middleware(
 idp.add_swagger_config(api_app)
 api_app.include_router(auth_router, prefix="/auth", tags=["auth"])
 api_app.include_router(scan_router, prefix="/scans", tags=["scans"])
+api_app.include_router(target_router, prefix="/targets", tags=["targets"])
+api_app.include_router(finding_router, prefix="/findings", tags=["findings"])
+api_app.include_router(report_router, prefix="/reports", tags=["reports"])
 
-app = FastAPI(title="Network Scanner Webserver API", version="0.1.0")
+app = FastAPI(title="Host Scanner Webserver API", version="0.1.0")
 app.mount("/api", api_app)

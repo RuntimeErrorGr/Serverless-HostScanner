@@ -92,20 +92,25 @@ async function fetchAPI(endpoint: string, options: RequestInit = {}) {
 // Scans API
 export const scansAPI = {
   getScans: () => fetchAPI("/scans/"),
-  getScan: (id: string) => fetchAPI(`/scans/${id}`),
-  getScanStatus: (id: string) => fetchAPI(`/scans/${id}/status`),
-  getScanFindings: (id: string) => fetchAPI(`/scans/${id}/findings`),
+  getScan: (uuid: string) => fetchAPI(`/scans/${uuid}`),
+  getScanStatus: (uuid: string) => fetchAPI(`/scans/${uuid}/status`),
+  getScanFindings: (uuid: string) => fetchAPI(`/scans/${uuid}/findings`),
   startScan: (data: any) =>
     fetchAPI("/scans/start", {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  deleteScan: (id: string) =>
-    fetchAPI(`/scans/${id}`, {
+  deleteScan: (uuid: string) =>
+    fetchAPI(`/scans/${uuid}`, {
       method: "DELETE",
     }),
-  generateReport: (id: string, format: string) =>
-    fetchAPI(`/scans/${id}/report`, {
+  bulkDeleteScans: (uuids: string[]) =>
+    fetchAPI("/scans/bulk-delete", {
+      method: "POST",
+      body: JSON.stringify(uuids),
+    }),
+  generateReport: (uuid: string, format: string) =>
+    fetchAPI(`/scans/${uuid}/report`, {
       method: "POST",
       body: JSON.stringify({ format }),
     }),
@@ -113,36 +118,58 @@ export const scansAPI = {
 
 // Targets API
 export const targetsAPI = {
-  getTargets: () => fetchAPI("/targets"),
-  getTarget: (id: string) => fetchAPI(`/targets/${id}`),
+  getTargets: () => fetchAPI("/targets/"),
+  getTarget: (uuid: string) => fetchAPI(`/targets/${uuid}`),
+  getTargetFlag: (uuid: string) => fetchAPI(`/targets/${uuid}/flag`),
   createTarget: (data: any) =>
-    fetchAPI("/targets", {
+    fetchAPI("/targets/", {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  deleteTarget: (id: string) =>
-    fetchAPI(`/targets/${id}`, {
+  deleteTarget: (uuid: string) =>
+    fetchAPI(`/targets/${uuid}`, {
       method: "DELETE",
+    }),
+  bulkDeleteTargets: (uuids: string[]) =>
+    fetchAPI("/targets/bulk-delete", {
+      method: "POST",
+      body: JSON.stringify(uuids),
     }),
 }
 
 // Reports API
 export const reportsAPI = {
-  getReports: () => fetchAPI("/reports"),
-  getReport: (id: string) => fetchAPI(`/reports/${id}`),
-  deleteReport: (id: string) =>
-    fetchAPI(`/reports/${id}`, {
+  getReports: () => fetchAPI("/reports/"),
+  getReport: (uuid: string) => fetchAPI(`/reports/${uuid}`),
+  deleteReport: (uuid: string) =>
+    fetchAPI(`/reports/${uuid}`, {
       method: "DELETE",
     }),
-  downloadReport: (id: string) => fetchAPI(`/reports/${id}/download`),
+  bulkDeleteReports: (uuids: string[]) =>
+    fetchAPI("/reports/bulk-delete", {
+      method: "POST",
+      body: JSON.stringify(uuids),
+    }),
+  downloadReport: (uuid: string) => fetchAPI(`/reports/${uuid}/download`),
 }
 
 // Findings API
 export const findingsAPI = {
-  getFindings: () => fetchAPI("/findings"),
-  getFinding: (id: string) => fetchAPI(`/findings/${id}`),
-  deleteFinding: (id: string) =>
-    fetchAPI(`/findings/${id}`, {
+  getFindings: () => fetchAPI("/findings/"),
+  getFinding: (uuid: string) => fetchAPI(`/findings/${uuid}`),
+  getFindingsByTarget: (targetUuid: string) => fetchAPI(`/findings/by-target/${targetUuid}`),
+  updateFinding: (uuid: string, data: any) =>
+    fetchAPI(`/findings/${uuid}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  deleteFinding: (uuid: string) =>
+    fetchAPI(`/findings/${uuid}`, {
       method: "DELETE",
+    }),
+  bulkDeleteFindings: (uuids: string[]) =>
+    fetchAPI("/findings/bulk-delete", {
+      method: "POST",
+      body: JSON.stringify(uuids),
     }),
 }

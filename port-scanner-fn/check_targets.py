@@ -164,7 +164,7 @@ class CheckTargets:
             
 
             self.last_sent_progress = self.overall_progress
-            return min(self.overall_progress, round(random.uniform(75.12, 78.37), 2))
+            return min(self.overall_progress, round(random.uniform(75.12, 78.32), 2))
                 
         except (ValueError, IndexError):
             pass
@@ -287,6 +287,10 @@ class CheckTargets:
         try:
             # URLs are checked and removed from the targets list.
             logging.debug("Starting check targets script...")
+            # Send initial information
+            starting_message = f"Starting scan of {len(self.config.targets)} targets..."
+            self._store_and_publish_message(starting_message)
+            seen_lines.add(starting_message)
             self.redis_client.set(f"scan:{self.config.scan_id}", json.dumps({"status": self.status}))
             self.redis_client.publish(f"{self.config.scan_id}:progress", str(random.uniform(1.4, 2.8)))
             urls, responding_urls = get_responding_urls(self.config.targets)
@@ -298,12 +302,7 @@ class CheckTargets:
                 cmd = self.config.get_cmd()
                 logging.debug("Command to run: %s", cmd)
                 process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
-                
-                # Send initial information
-                starting_message = f"Starting scan of {len(self.config.targets)} targets..."
-                self._store_and_publish_message(starting_message)
-                seen_lines.add(starting_message)
-
+            
                 while True:
                     line = process.stdout.readline()
                     if line:
@@ -444,7 +443,6 @@ class CheckTargets:
             # Store status in the scan:<scan_id> key
             self.redis_client.set(f"scan:{self.config.scan_id}", json.dumps({"status": self.status}))
             self.redis_client.publish(f"{self.config.scan_id}:progress", "100")
-            # Store results in the scan_results:<scan_id> key
             self.redis_client.set(f"scan_results:{self.config.scan_id}", json.dumps(results["scan_results"]))
             
             logging.debug("Successfully wrote results to Redis for scan id: %s", self.config.scan_id)

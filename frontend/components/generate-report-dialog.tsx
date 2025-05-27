@@ -47,7 +47,7 @@ export function GenerateReportDialog({ isOpen, onClose, onConfirm, scan }: Gener
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Generate Report</DialogTitle>
-          <DialogDescription>Select a format for the report for scan &quot;{scan.name}&quot;.</DialogDescription>
+          <DialogDescription>Select an export format for the &quot;{scan.name}&quot;.</DialogDescription>
         </DialogHeader>
 
         <Form {...form}>

@@ -36,16 +36,13 @@ def update_scan_status(scan_uuid, status, db):
     if status == ScanStatus.RUNNING and scan.status != ScanStatus.RUNNING:
         scan.started_at = now_utc()
     elif status in (ScanStatus.COMPLETED, ScanStatus.FAILED) and scan.finished_at is None:
-        # get total number of completed/failed scans for the user
-        total_scans = (
-            db.query(Scan)
-            .filter(
-                Scan.user_id == scan.user_id,
-                Scan.status.in_([ScanStatus.COMPLETED, ScanStatus.FAILED])
-            )
-            .count()
-        )
-        scan.name = "Scan report no. " + str(total_scans + 1)
+        scans = db.query(Scan).filter(Scan.user_id == scan.user_id, Scan.status.in_([ScanStatus.COMPLETED, ScanStatus.FAILED])).all()
+        scan_names = [scan.name for scan in scans]
+        if scan_names:
+            highest_number = max([int(name.split(" ")[-1]) for name in scan_names if name.startswith("Scan report no.")])
+            scan.name = "Scan report no. " + str(highest_number + 1)
+        else:
+            scan.name = "Scan report no. 1"
         scan.finished_at = now_utc()
         # Send final progress
         try:
@@ -115,10 +112,8 @@ SCRIPT_RULES = {
 def classify_port(p_info):
     port = p_info.get('port')
     state = (p_info.get('state') or 'unknown').lower()
-    if state not in ('open', 'closed'):
+    if state != "open":
         return None
-    if state == 'closed':
-        return Severity.INFO, "Port closed; no service listening."
     return PORT_RULES.get(port, (Severity.LOW, f"Service {p_info.get('service', {}).get('name', '')}/{port} open; review necessity and patch."))
 
 
@@ -170,7 +165,7 @@ def classify_script(script):
     if name == 'ssl-enum-ciphers':
         if any(tag in output.lower() for tag in ('rc4', '3des', 'md5')):
             return Severity.MEDIUM, "Disable weak TLS ciphers (RC4, 3DES, MD5)."
-        return Severity.LOW, "Cipher suite is strong."
+        return Severity.INFO, "Cipher suite is strong. No action is required."
     
     if name == 'http-sql-injection':
         for line in output.splitlines():
@@ -181,20 +176,20 @@ def classify_script(script):
         return Severity.HIGH, "SQL injection vulnerability: no vulnerability found."
 
     # Default informational
-    return Severity.INFO, f"Script {name} ran; review output."
+    return Severity.INFO, f"Script {name} ran; review output. No action is required."
 
 
 def classify_os(os_info):
     name = os_info.get('name', '')
     if any(x in name.lower() for x in ('xp', '2003', 'centos 5', 'debian 7')):
         return Severity.HIGH, f"Detected outdated OS {name}; upgrade or patch."
-    return Severity.INFO, f"OS detected: {name}."
+    return Severity.INFO, "This is just an informational finding. No action is required."
 
 
 def classify_traceroute(trace):
     if trace and trace[0].get('ip') and not trace[0]['ip'].startswith(('10.', '192.168.', '172.')):
         return Severity.INFO, "Host appears in DMZ; verify firewall rules."
-    return Severity.INFO, "Traceroute recorded."
+    return Severity.INFO, "Traceroute recorded. This is just an informational finding. No action is required."
 
 
 def process_scan_results(scan, scan_results, db):
@@ -212,39 +207,59 @@ def process_scan_results(scan, scan_results, db):
         if target not in scan.targets:
             scan.targets.append(target)
         # OS finding
-        os_info = host.get('os_info', {})
-        sev, reco = classify_os(os_info)
-        db.add(Finding(
-            name=f"{name}-OS",
-            description="OS fingerprint",
-            recommendation=reco,
-            port=None,
-            port_state=None,
-            protocol=None,
-            service=None,
-            os=os_info,
-            traceroute=None,
-            severity=sev,
-            target=target,
-        ))
-        new_count += 1
+        os_info = host.get('os_info', None)
+        if os_info:
+            sev, reco = classify_os(os_info)
+            finding_name = f"{name}-OS"
+            # Check for duplicate OS finding
+            existing_finding = db.query(Finding).filter_by(
+                target_id=target.id,
+                name=finding_name,
+                severity=sev
+            ).first()
+            if not existing_finding:
+                db.add(Finding(
+                    name=finding_name,
+                    description="OS fingerprint",
+                    recommendation=reco,
+                    evidence=json.dumps(os_info),
+                    port=None,
+                    port_state=None,
+                    protocol=None,
+                    service=None,
+                    os=os_info,
+                    traceroute=None,
+                    severity=sev,
+                    target=target,
+                ))
+                new_count += 1
         # Traceroute finding
-        trace = host.get('traceroute', [])
-        sev, reco = classify_traceroute(trace)
-        db.add(Finding(
-            name=f"{name}-Traceroute",
-            description="Network path",
-            recommendation=reco,
-            port=None,
-            port_state=None,
-            protocol=None,
-            service=None,
-            os=None,
-            traceroute=trace,
-            severity=sev,
-            target=target,
-        ))
-        new_count += 1
+        trace = host.get('traceroute', None)
+        if trace:
+            sev, reco = classify_traceroute(trace)
+            finding_name = f"{name}-Traceroute"
+            # Check for duplicate traceroute finding
+            existing_finding = db.query(Finding).filter_by(
+                target_id=target.id,
+                name=finding_name,
+                severity=sev
+            ).first()
+            if not existing_finding:
+                db.add(Finding(
+                    name=finding_name,
+                    description="Network path",
+                    recommendation=reco,
+                    evidence=json.dumps(trace),
+                    port=None,
+                    port_state=None,
+                    protocol=None,
+                    service=None,
+                    os=None,
+                    traceroute=trace,
+                    severity=sev,
+                    target=target,
+                ))
+                new_count += 1
         # Port & Script findings
         for p in host.get('ports', []):
             if p.get('port') is None:
@@ -254,26 +269,38 @@ def process_scan_results(scan, scan_results, db):
             except (ValueError, TypeError):
                 continue
             state = p.get('state', '').lower()
-            if state not in ('open', 'closed'):
+            if state != "open":
                 continue
             result = classify_port(p)
             if not result:
                 continue
             sev, reco = result
-            db.add(Finding(
-                name=f"{name}:{port_num}/{p.get('protocol')}",
-                description=f"Port {state}",
-                recommendation=reco,
+            reason = p.get('reason') + f" (TTL: {p.get('reason_ttl') or 'unknown'})"
+            finding_name = f"{name}:{port_num}/{p.get('protocol')}"
+            # Check for duplicate port finding
+            existing_finding = db.query(Finding).filter_by(
+                target_id=target.id,
+                name=finding_name,
                 port=port_num,
-                port_state=PortState(state),
                 protocol=p.get('protocol'),
-                service=p.get('service', {}).get('name', ''),
-                os=None,
-                traceroute=None,
-                severity=sev,
-                target=target
-            ))
-            new_count += 1
+                severity=sev
+            ).first()
+            if not existing_finding:
+                db.add(Finding(
+                    name=finding_name,
+                    description=f"Port {state} has been declared based on {reason} response.",
+                    evidence=f"Response received: {reason}",
+                    recommendation=reco,
+                    port=port_num,
+                    port_state=PortState(state),
+                    protocol=p.get('protocol'),
+                    service=p.get('service', {}).get('name', ''),
+                    os=None,
+                    traceroute=None,
+                    severity=sev,
+                    target=target
+                ))
+                new_count += 1
             # Handle scripts: scripts may be dict of {script_name: output or dict}
             scripts = p.get('scripts') or {}
             # Normalize: if scripts is list, keep; if dict, transform
@@ -291,20 +318,31 @@ def process_scan_results(scan, scan_results, db):
                 else:
                     output = str(script_data)
                 sev_s, reco_s = classify_script({'id': script_name, 'output': output})
-                db.add(Finding(
-                    name=f"{name}:{port_num} script {script_name}",
-                    description=output,
-                    recommendation=reco_s,
+                finding_name = f"{name}:{port_num} script {script_name}"
+                # Check for duplicate script finding
+                existing_finding = db.query(Finding).filter_by(
+                    target_id=target.id,
+                    name=finding_name,
                     port=port_num,
-                    port_state=PortState(state),
                     protocol=p.get('protocol'),
-                    service=p.get('service', {}).get('name', ''),
-                    os=None,
-                    traceroute=None,
-                    severity=sev_s,
-                    target=target
-                ))
-                new_count += 1
+                    severity=sev_s
+                ).first()
+                if not existing_finding:
+                    db.add(Finding(
+                        name=finding_name,
+                        description=f"Script {script_name} ran successfully.",
+                        evidence=output,
+                        recommendation=reco_s,
+                        port=port_num,
+                        port_state=PortState(state),
+                        protocol=p.get('protocol'),
+                        service=p.get('service', {}).get('name', ''),
+                        os=None,
+                        traceroute=None,
+                        severity=sev_s,
+                        target=target
+                    ))
+                    new_count += 1
     db.commit()
     log.info(f"Inserted {new_count} new findings for scan {scan.uuid}")
 

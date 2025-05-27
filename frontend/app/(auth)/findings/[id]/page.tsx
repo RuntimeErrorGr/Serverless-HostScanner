@@ -7,9 +7,13 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowLeft, AlertTriangle, Shield, Save, Loader2 } from "lucide-react"
+import { DeleteFindingDialog } from "@/components/delete-finding-dialog"
+import { OSIcon } from "@/components/os-icon"
+import { TracerouteVisualization } from "@/components/traceroute-visualization"
+import { ArrowLeft, AlertTriangle, Shield, Save, Loader2, Trash2 } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
 import { findingsAPI } from "@/lib/api"
+import { formatToBucharestTime } from "@/lib/timezone"
 
 const getSeverityColor = (severity: string) => {
   switch (severity?.toLowerCase()) {
@@ -27,29 +31,112 @@ const getSeverityColor = (severity: string) => {
   }
 }
 
+const getSeverityTextColor = (severity: string) => {
+  switch (severity?.toLowerCase()) {
+    case "critical":
+      return "text-white"
+    case "high":
+      return "text-white"
+    case "medium":
+      return "text-white"
+    case "low":
+      return "text-white"
+    case "info":
+    default:
+      return "text-white"
+  }
+}
+
 const getSeverityIcon = (severity: string) => {
   switch (severity?.toLowerCase()) {
     case "critical":
+      return <AlertTriangle className="h-5 w-5 text-red-600" />
     case "high":
-      return <AlertTriangle className="h-5 w-5 text-red-500" />
+      return <AlertTriangle className="h-5 w-5 text-orange-600" />
     case "medium":
-      return <AlertTriangle className="h-5 w-5 text-yellow-500" />
+      return <AlertTriangle className="h-5 w-5 text-yellow-600" />
     case "low":
+      return <Shield className="h-5 w-5 text-blue-600" />
     case "info":
-      return <Shield className="h-5 w-5 text-blue-500" />
     default:
-      return <Shield className="h-5 w-5 text-gray-500" />
+      return <Shield className="h-5 w-5 text-gray-600" />
   }
 }
+
+const isScriptFinding = (name: string) => {
+  return name?.toLowerCase().includes("script")
+}
+
+const isOSFinding = (name: string) => {
+  return name?.toLowerCase().includes("os")
+}
+
+const isTracerouteFinding = (name: string) => {
+  return name?.toLowerCase().includes("traceroute")
+}
+
+const CodeBlock = ({ children }: { children: string }) => (
+  <pre className="bg-muted p-4 rounded-lg overflow-x-auto text-sm font-mono whitespace-pre-wrap">
+    <code>{children}</code>
+  </pre>
+)
+
+const OSDetails = ({ data }: { data: any }) => (
+  <div className="space-y-4">
+    <div className="flex items-center space-x-4 p-4 bg-muted/30 rounded-lg">
+      <OSIcon osName={data.name} className="h-8 w-8" />
+      <div>
+        <h4 className="font-semibold text-lg">{data.name}</h4>
+        <p className="text-sm text-muted-foreground">Detection Accuracy: {data.accuracy}%</p>
+      </div>
+    </div>
+
+    {data.classes && data.classes.length > 0 && (
+      <div>
+        <h5 className="font-medium mb-3">OS Classification Details</h5>
+        <div className="rounded-md border">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b">
+                <th className="text-left p-3 text-sm font-medium text-muted-foreground">Type</th>
+                <th className="text-left p-3 text-sm font-medium text-muted-foreground">Vendor</th>
+                <th className="text-left p-3 text-sm font-medium text-muted-foreground">OS Family</th>
+                <th className="text-left p-3 text-sm font-medium text-muted-foreground">Generation</th>
+                <th className="text-left p-3 text-sm font-medium text-muted-foreground">Accuracy</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.classes.map((osClass: any, index: number) => (
+                <tr key={index} className="border-b last:border-b-0">
+                  <td className="p-3 capitalize">{osClass.type || "-"}</td>
+                  <td className="p-3">{osClass.vendor || "-"}</td>
+                  <td className="p-3">
+                    <div className="flex items-center space-x-2">
+                      <OSIcon osName={osClass.osfamily} className="h-4 w-4" />
+                      <span>{osClass.osfamily || "-"}</span>
+                    </div>
+                  </td>
+                  <td className="p-3">{osClass.osgen || "-"}</td>
+                  <td className="p-3">{osClass.accuracy}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )}
+  </div>
+)
 
 export default function FindingDetailPage() {
   const params = useParams()
   const router = useRouter()
-  const findingId = params.id as string
+  const findingUuid = params.id as string
   const [finding, setFinding] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [editData, setEditData] = useState({
     description: "",
     recommendation: "",
@@ -61,7 +148,8 @@ export default function FindingDetailPage() {
     async function fetchFinding() {
       try {
         setIsLoading(true)
-        const data = await findingsAPI.getFinding(findingId)
+        const data = await findingsAPI.getFinding(findingUuid)
+
         setFinding(data)
         setEditData({
           description: data.description || "",
@@ -80,15 +168,15 @@ export default function FindingDetailPage() {
       }
     }
 
-    if (findingId) {
+    if (findingUuid) {
       fetchFinding()
     }
-  }, [findingId])
+  }, [findingUuid])
 
   const handleSave = async () => {
     try {
       setIsSaving(true)
-      const updatedFinding = await findingsAPI.updateFinding(findingId, editData)
+      const updatedFinding = await findingsAPI.updateFinding(findingUuid, editData)
       setFinding(updatedFinding)
       setIsEditing(false)
       toast({
@@ -117,6 +205,56 @@ export default function FindingDetailPage() {
     setIsEditing(false)
   }
 
+  const handleDeleteFinding = async () => {
+    try {
+      await findingsAPI.deleteFinding(findingUuid)
+      toast({
+        variant: "success",
+        title: "Finding deleted",
+        description: "The finding has been deleted successfully.",
+      })
+      router.push("/findings")
+    } catch (error) {
+      console.error("Error deleting finding:", error)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to delete finding. Please try again.",
+      })
+    }
+  }
+
+  const renderEvidence = () => {
+    if (!finding.evidence) return <p className="text-muted-foreground">No evidence available.</p>
+
+    const isScript = isScriptFinding(finding.name)
+    const isOS = isOSFinding(finding.name)
+    const isTraceroute = isTracerouteFinding(finding.name)
+
+    try {
+      if (isTraceroute) {
+        // Parse traceroute data
+        const tracerouteData = finding.evidence
+        if (Array.isArray(tracerouteData)) {
+          return <TracerouteVisualization data={tracerouteData} />
+        }
+      } else if (isOS) {
+        // For OS findings, we display the OS details directly without "Technical Evidence" section
+        const osData = finding.evidence
+        return <OSDetails data={osData} />
+      } else if (isScript) {
+        // Display as code block for scripts
+        return <CodeBlock>{finding.evidence}</CodeBlock>
+      }
+    } catch (error) {
+      console.error("Error parsing evidence data:", error)
+      // Fallback to raw text display
+    }
+
+    // Default display for other types or parsing errors
+    return <p className="text-sm bg-muted p-3 rounded-md whitespace-pre-line">{finding.evidence}</p>
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-[400px]">
@@ -142,6 +280,9 @@ export default function FindingDetailPage() {
     )
   }
 
+  const isOS = isOSFinding(finding.name)
+  const isTraceroute = isTracerouteFinding(finding.name)
+
   return (
     <div className="space-y-6 w-full">
       <div className="flex items-center justify-between">
@@ -152,7 +293,7 @@ export default function FindingDetailPage() {
           </Button>
           <div>
             <h1 className="text-3xl font-bold tracking-tight flex items-center">
-              {getSeverityIcon(finding.severity)}
+              {getSeverityIcon(finding.severity || "info")}
               <span className="ml-2">Finding Details</span>
             </h1>
             <p className="text-muted-foreground">Detailed information about the security finding</p>
@@ -170,7 +311,13 @@ export default function FindingDetailPage() {
               </Button>
             </>
           ) : (
-            <Button onClick={() => setIsEditing(true)}>Edit Finding</Button>
+            <>
+              <Button onClick={() => setIsEditing(true)}>Edit Finding</Button>
+              <Button variant="outline" onClick={() => setIsDeleteDialogOpen(true)}>
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -178,7 +325,7 @@ export default function FindingDetailPage() {
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Finding Information</CardTitle>
+            <CardTitle>Finding Summary</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -191,7 +338,7 @@ export default function FindingDetailPage() {
                 <div className="mt-1">
                   {isEditing ? (
                     <Select
-                      value={editData.severity}
+                      value={editData.severity?.toUpperCase()}
                       onValueChange={(value) => setEditData({ ...editData, severity: value })}
                     >
                       <SelectTrigger className="w-[180px]">
@@ -206,36 +353,39 @@ export default function FindingDetailPage() {
                       </SelectContent>
                     </Select>
                   ) : (
-                    <Badge className={getSeverityColor(finding.severity)}>
-                      {finding.severity?.toUpperCase() || "UNKNOWN"}
+                    <Badge className={getSeverityColor(finding.severity || "info")}>
+                      <span className={`font-bold ${getSeverityTextColor(finding.severity || "info")}`}>
+                        {finding.severity?.toUpperCase() || "UNKNOWN"}
+                      </span>
                     </Badge>
                   )}
                 </div>
               </div>
-              {finding.port && (
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <h3 className="text-sm font-medium text-muted-foreground">Port</h3>
-                    <p className="mt-1">{finding.port}</p>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium text-muted-foreground">Protocol</h3>
-                    <p className="mt-1 capitalize">{finding.protocol}</p>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium text-muted-foreground">Service</h3>
-                    <p className="mt-1">{finding.service}</p>
-                  </div>
-                </div>
-              )}
-              <div className="grid grid-cols-2 gap-4">
+
+              <div className="grid grid-cols-3 gap-4">
+                {finding.port && (
+                  <>
+                    <div>
+                      <h3 className="text-sm font-medium text-muted-foreground">Port</h3>
+                      <p className="mt-1">{finding.port}</p>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-medium text-muted-foreground">Protocol</h3>
+                      <p className="mt-1 capitalize">{finding.protocol}</p>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-medium text-muted-foreground">Service</h3>
+                      <p className="mt-1">{finding.service?.toUpperCase()}</p>
+                    </div>
+                  </>
+                )}
                 <div>
                   <h3 className="text-sm font-medium text-muted-foreground">Date Found</h3>
-                  <p className="mt-1">{new Date(finding.created_at).toLocaleString()}</p>
+                  <div className="mt-1">{formatToBucharestTime(finding.created_at)}</div>
                 </div>
                 <div>
                   <h3 className="text-sm font-medium text-muted-foreground">Last Updated</h3>
-                  <p className="mt-1">{new Date(finding.updated_at).toLocaleString()}</p>
+                  <div className="mt-1">{formatToBucharestTime(finding.updated_at)}</div>
                 </div>
               </div>
             </div>
@@ -244,25 +394,38 @@ export default function FindingDetailPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Target Information</CardTitle>
-            <CardDescription>Information about the affected target</CardDescription>
+            <CardTitle>
+              {isOS ? "Operating System Detection" : isTraceroute ? "Network Traceroute" : "Finding Evidence"}
+            </CardTitle>
+            <CardDescription>
+              {isOS
+                ? "Detected operating system information and classification details"
+                : isTraceroute
+                  ? "Network path analysis showing route to target"
+                  : "Technical details that support this security finding"}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div>
-                <h3 className="text-sm font-medium text-muted-foreground">Target ID</h3>
-                <p className="mt-1">{finding.target_id}</p>
-              </div>
-              {finding.os && (
+              {!isOS && finding.os && (
                 <div>
                   <h3 className="text-sm font-medium text-muted-foreground">Operating System</h3>
-                  <p className="mt-1">{finding.os}</p>
+                  <div className="mt-1 flex items-center space-x-2">
+                    <OSIcon osName={finding.os} className="h-5 w-5" />
+                    <span>{finding.os}</span>
+                  </div>
                 </div>
               )}
-              {finding.port_state && (
+              {!isOS && finding.port_state && (
                 <div>
                   <h3 className="text-sm font-medium text-muted-foreground">Port State</h3>
                   <p className="mt-1 capitalize">{finding.port_state.toLowerCase()}</p>
+                </div>
+              )}
+              {finding.evidence && (
+                <div>
+                  {!isOS && <h3 className="text-sm font-medium text-muted-foreground mb-2">Technical Evidence</h3>}
+                  <div>{renderEvidence()}</div>
                 </div>
               )}
             </div>
@@ -305,6 +468,13 @@ export default function FindingDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      <DeleteFindingDialog
+        isOpen={isDeleteDialogOpen}
+        onClose={() => setIsDeleteDialogOpen(false)}
+        onConfirm={handleDeleteFinding}
+        findingName={finding.name}
+      />
     </div>
   )
 }

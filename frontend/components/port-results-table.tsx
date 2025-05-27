@@ -157,6 +157,10 @@ export function PortResultsTable({ ports, onPortClick }: PortResultsTableProps) 
     setFilters({})
   }
 
+  const filterOpenPorts = () => {
+    setFilters({ state: "open" })
+  }
+
   const toggleFiltersAndSorting = () => {
     if (showFilters) {
       setShowFilters(false)
@@ -244,17 +248,18 @@ export function PortResultsTable({ ports, onPortClick }: PortResultsTableProps) 
                 Showing all {stats.totalPorts} ports:{" "}
                 {stateEntries.map(([state, count], index) => (
                   <span key={state}>
-                    <span
+                    <button
+                      onClick={() => state === "open" && filterOpenPorts()}
                       className={cn(
                         "font-medium",
-                        state === "open" && "text-green-600 dark:text-green-400",
+                        state === "open" && "text-green-600 dark:text-green-400 hover:underline cursor-pointer",
                         state === "closed" && "text-red-600 dark:text-red-400",
                         state === "filtered" && "text-gray-600 dark:text-gray-400",
                         state === "open|filtered" && "text-amber-600 dark:text-amber-400",
                       )}
                     >
                       {count} {state}
-                    </span>
+                    </button>
                     {index < stateEntries.length - 1 && ", "}
                   </span>
                 ))}
@@ -271,7 +276,7 @@ export function PortResultsTable({ ports, onPortClick }: PortResultsTableProps) 
                     {stats.filteredPorts} {currentStateFilter}
                   </span>{" "}
                   ports,
-                  <span className="font-medium text-foreground"> {stats.hiddenPorts} other ports</span> are hidden.
+                  <span className="font-medium text-foreground"> {stats.hiddenPorts} other ports</span> are hidden. Clear filters to show all.
                 </span>
               )
             } else if (stats.hiddenPorts > 0) {
@@ -358,7 +363,7 @@ export function PortResultsTable({ ports, onPortClick }: PortResultsTableProps) 
                         variant="outline"
                         className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800/30 text-blue-700 dark:text-blue-400"
                       >
-                        {Object.keys(port.scripts).length} finding
+                        {Object.keys(port.scripts).length} script
                         {Object.keys(port.scripts).length !== 1 ? "s" : ""}
                       </Badge>
                     ) : (

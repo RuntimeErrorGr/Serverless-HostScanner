@@ -8,6 +8,7 @@ from app.api import (
     target_router,
     finding_router,
     report_router,
+    dashboard_router,
 )
 from app.log import get_logger
 
@@ -28,6 +29,7 @@ api_app.include_router(scan_router, prefix="/scans", tags=["scans"])
 api_app.include_router(target_router, prefix="/targets", tags=["targets"])
 api_app.include_router(finding_router, prefix="/findings", tags=["findings"])
 api_app.include_router(report_router, prefix="/reports", tags=["reports"])
+api_app.include_router(dashboard_router, prefix="/dashboard", tags=["dashboard"])
 
 app = FastAPI(title="Host Scanner Webserver API", version="0.1.0")
 app.mount("/api", api_app)

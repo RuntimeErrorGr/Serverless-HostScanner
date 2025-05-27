@@ -19,44 +19,46 @@ import {
   Cell,
 } from "recharts"
 import { useThemeColors } from "@/hooks/use-theme-colors"
+import { useEffect, useState } from "react"
+import { dashboardAPI } from "@/lib/api"
 
-// Mock data for dashboard
-const mockData = {
-  totalTargets: 156,
-  averageScansPerTarget: 3.2,
-  averageScanTime: "2m 45s",
-  openPortsData: [
-    { name: "Port 80", value: 124 },
-    { name: "Port 443", value: 98 },
-    { name: "Port 22", value: 76 },
-    { name: "Port 21", value: 45 },
-    { name: "Port 3389", value: 32 },
-  ],
-  protocolsData: [
-    { name: "HTTP", value: 124 },
-    { name: "HTTPS", value: 98 },
-    { name: "SSH", value: 76 },
-    { name: "FTP", value: 45 },
-    { name: "RDP", value: 32 },
-  ],
-  scanActivityData: [
-    { name: "Jan", value: 12 },
-    { name: "Feb", value: 19 },
-    { name: "Mar", value: 15 },
-    { name: "Apr", value: 27 },
-    { name: "May", value: 32 },
-    { name: "Jun", value: 24 },
-    { name: "Jul", value: 38 },
-  ],
-  vulnerabilityTrendData: [
-    { name: "Jan", value: 5 },
-    { name: "Feb", value: 8 },
-    { name: "Mar", value: 12 },
-    { name: "Apr", value: 7 },
-    { name: "May", value: 15 },
-    { name: "Jun", value: 9 },
-    { name: "Jul", value: 11 },
-  ],
+// Types for dashboard data
+interface DashboardStats {
+  totalTargets: number
+  averageScansPerTarget: number
+  averageScanTime: string
+  activeScans: number
+  pendingScans: number
+  runningScans: number
+  deltas: {
+    totalTargets: number
+    averageScansPerTarget: number
+    averageScanTime: string
+  }
+}
+
+interface ScanActivityData {
+  name: string
+  value: number
+}
+
+interface VulnerabilityTrendsData {
+  name: string
+  critical: number
+  high: number
+  medium: number
+  low: number
+  info: number
+}
+
+interface PortData {
+  name: string
+  value: number
+}
+
+interface ProtocolData {
+  name: string
+  value: number
 }
 
 // Empty state component for charts
@@ -70,16 +72,152 @@ function EmptyChart({ title, description }: { title: string; description: string
   )
 }
 
+
 export default function DashboardPage() {
-  // For testing empty state, set this to true
-  const isEmpty = false
-  const { chartColors, pieColors, lineColors, barColors, gridColor, textColor } = useThemeColors()
+  const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [scanActivity, setScanActivity] = useState<ScanActivityData[]>([])
+  const [vulnerabilityTrends, setVulnerabilityTrends] = useState<VulnerabilityTrendsData[]>([])
+  const [openPorts, setOpenPorts] = useState<PortData[]>([])
+  const [protocols, setProtocols] = useState<ProtocolData[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const { chartColors, pieColors, lineColors, barColors, gridColor, textColor, isDarkMode } = useThemeColors()
+  
+  // Severity colors for vulnerability trends
+  const severityColors = {
+    critical: "#dc2626", // red-600
+    high: "#ea580c", // orange-600
+    medium: "#ca8a04", // yellow-600
+    low: "#2563eb", // blue-600
+    info: "#6b7280", // gray-500
+  }
+
+  // Enhanced tooltip colors for better elegance
+  const tooltipStyle = {
+    backgroundColor: isDarkMode ? "#1f2937" : "#ffffff", // gray-800 : white
+    color: isDarkMode ? "#f9fafb" : "#111827", // gray-50 : gray-900
+    border: `1px solid ${isDarkMode ? "#374151" : "#e5e7eb"}`, // gray-700 : gray-200
+    borderRadius: "8px",
+    boxShadow: isDarkMode
+      ? "0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2)"
+      : "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
+  }
+
+  const tooltipLabelStyle = {
+    color: isDarkMode ? "#d1d5db" : "#374151", // gray-300 : gray-700
+    fontWeight: "500",
+  }
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+
+        // Fetch all dashboard data
+        const [statsData, scanActivityData, vulnerabilityTrendsData, openPortsData, protocolsData] = await Promise.all([
+          dashboardAPI.getStats(),
+          dashboardAPI.getScanActivity(),
+          dashboardAPI.getVulnerabilityTrends(),
+          dashboardAPI.getOpenPorts(),
+          dashboardAPI.getProtocols(),
+        ])
+
+        setStats(statsData)
+        setScanActivity(scanActivityData)
+        setVulnerabilityTrends(vulnerabilityTrendsData)
+        setOpenPorts(openPortsData)
+        setProtocols(protocolsData)
+      } catch (err) {
+        console.error("Failed to fetch dashboard data:", err)
+        setError("Failed to load dashboard data")
+
+        // Fallback to mock data for development
+        setStats({
+          totalTargets: 156,
+          averageScansPerTarget: 3.2,
+          averageScanTime: "2m 45s",
+          activeScans: 3,
+          pendingScans: 2,
+          runningScans: 1,
+          deltas: {
+            totalTargets: 12,
+            averageScansPerTarget: 0.5,
+            averageScanTime: "-15s",
+          },
+        })
+        setScanActivity([
+          { name: "Jan", value: 12 },
+          { name: "Feb", value: 19 },
+          { name: "Mar", value: 15 },
+          { name: "Apr", value: 27 },
+          { name: "May", value: 32 },
+          { name: "Jun", value: 24 },
+          { name: "Jul", value: 38 },
+        ])
+        setVulnerabilityTrends([
+          { name: "Jan", critical: 2, high: 5, medium: 8, low: 12, info: 15 },
+          { name: "Feb", critical: 3, high: 7, medium: 12, low: 18, info: 22 },
+          { name: "Mar", critical: 1, high: 4, medium: 15, low: 25, info: 28 },
+          { name: "Apr", critical: 4, high: 6, medium: 10, low: 20, info: 18 },
+          { name: "May", critical: 2, high: 8, medium: 18, low: 30, info: 35 },
+          { name: "Jun", critical: 1, high: 3, medium: 12, low: 22, info: 25 },
+          { name: "Jul", critical: 3, high: 5, medium: 14, low: 28, info: 32 },
+        ])
+        setOpenPorts([
+          { name: "Port 80", value: 124 },
+          { name: "Port 443", value: 98 },
+          { name: "Port 22", value: 76 },
+          { name: "Port 21", value: 45 },
+          { name: "Port 3389", value: 32 },
+        ])
+        setProtocols([
+          { name: "HTTP", value: 124 },
+          { name: "HTTPS", value: 98 },
+          { name: "SSH", value: 76 },
+          { name: "FTP", value: 45 },
+          { name: "RDP", value: 32 },
+        ])
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchDashboardData()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="space-y-6 w-full">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-muted-foreground">Loading dashboard data...</p>
+        </div>
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i}>
+              <CardContent className="p-6">
+                <div className="animate-pulse">
+                  <div className="h-4 bg-muted rounded w-3/4 mb-2"></div>
+                  <div className="h-8 bg-muted rounded w-1/2"></div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  const isEmpty = !stats || scanActivity.length === 0
 
   return (
     <div className="space-y-6 w-full">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
         <p className="text-muted-foreground">Overview of your network scanning activities</p>
+        {error && <p className="text-sm text-muted-foreground mt-1">Using fallback data due to connection issues</p>}
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
@@ -89,8 +227,11 @@ export default function DashboardPage() {
             <Target className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockData.totalTargets}</div>
-            <p className="text-xs text-muted-foreground">+12 from last month</p>
+            <div className="text-2xl font-bold">{stats?.totalTargets || 0}</div>
+            <p className="text-xs text-muted-foreground">
+              {stats?.deltas.totalTargets && stats?.deltas.totalTargets > 0 ? "+" : ""}
+              {stats?.deltas.totalTargets || 0} from last month
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -99,8 +240,11 @@ export default function DashboardPage() {
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockData.averageScansPerTarget}</div>
-            <p className="text-xs text-muted-foreground">+0.5 from last month</p>
+            <div className="text-2xl font-bold">{stats?.averageScansPerTarget || 0}</div>
+            <p className="text-xs text-muted-foreground">
+              {stats?.deltas.averageScansPerTarget && stats?.deltas.averageScansPerTarget > 0 ? "+" : ""}
+              {stats?.deltas.averageScansPerTarget || 0} from last month
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -109,8 +253,10 @@ export default function DashboardPage() {
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockData.averageScanTime}</div>
-            <p className="text-xs text-muted-foreground">-15s from last month</p>
+            <div className="text-2xl font-bold">{stats?.averageScanTime || "0s"}</div>
+            <p className="text-xs text-muted-foreground">
+              {stats?.deltas.averageScanTime || "0s"} from last month
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -119,8 +265,10 @@ export default function DashboardPage() {
             <Server className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">3</div>
-            <p className="text-xs text-muted-foreground">2 pending, 1 running</p>
+            <div className="text-2xl font-bold">{stats?.activeScans || 0}</div>
+            <p className="text-xs text-muted-foreground">
+              {stats?.pendingScans || 0} pending, {stats?.runningScans || 0} running
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -140,18 +288,14 @@ export default function DashboardPage() {
               <CardContent>
                 {!isEmpty ? (
                   <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={mockData.scanActivityData}>
+                    <BarChart data={scanActivity}>
                       <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
                       <XAxis dataKey="name" stroke={textColor} />
                       <YAxis stroke={textColor} />
                       <Tooltip
-                        formatter={(value) => [`${value} scans`, "Scans"]}
-                        contentStyle={{
-                          backgroundColor: "var(--background)",
-                          color: textColor,
-                          border: "1px solid var(--border)",
-                        }}
-                        labelStyle={{ color: textColor }}
+                        formatter={(value) => [`${value}`, "Scans"]}
+                        contentStyle={tooltipStyle}
+                        labelStyle={tooltipLabelStyle}
                       />
                       <Legend wrapperStyle={{ color: textColor }} />
                       <Bar dataKey="value" name="Scans" fill={barColors.primary} />
@@ -168,31 +312,60 @@ export default function DashboardPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Vulnerability Trends</CardTitle>
-                <CardDescription>Vulnerabilities discovered over time</CardDescription>
+                <CardDescription>Vulnerabilities discovered over time by severity level</CardDescription>
               </CardHeader>
               <CardContent>
                 {!isEmpty ? (
                   <ResponsiveContainer width="100%" height={300}>
-                    <LineChart data={mockData.vulnerabilityTrendData}>
+                    <LineChart data={vulnerabilityTrends}>
                       <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
                       <XAxis dataKey="name" stroke={textColor} />
                       <YAxis stroke={textColor} />
                       <Tooltip
-                        formatter={(value) => [`${value} vulnerabilities`, "Vulnerabilities"]}
-                        contentStyle={{
-                          backgroundColor: "var(--background)",
-                          color: textColor,
-                          border: "1px solid var(--border)",
-                        }}
-                        labelStyle={{ color: textColor }}
+                        formatter={(value, name) => [`${value}`, name?.toString().toUpperCase()]}
+                        contentStyle={tooltipStyle}
+                        labelStyle={tooltipLabelStyle}
                       />
                       <Legend wrapperStyle={{ color: textColor }} />
                       <Line
                         type="monotone"
-                        dataKey="value"
-                        name="Vulnerabilities"
-                        stroke={lineColors.primary}
+                        dataKey="critical"
+                        name="Critical"
+                        stroke={severityColors.critical}
                         strokeWidth={2}
+                        dot={{ fill: severityColors.critical, strokeWidth: 2, r: 4 }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="high"
+                        name="High"
+                        stroke={severityColors.high}
+                        strokeWidth={2}
+                        dot={{ fill: severityColors.high, strokeWidth: 2, r: 4 }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="medium"
+                        name="Medium"
+                        stroke={severityColors.medium}
+                        strokeWidth={2}
+                        dot={{ fill: severityColors.medium, strokeWidth: 2, r: 4 }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="low"
+                        name="Low"
+                        stroke={severityColors.low}
+                        strokeWidth={2}
+                        dot={{ fill: severityColors.low, strokeWidth: 2, r: 4 }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="info"
+                        name="Info"
+                        stroke={severityColors.info}
+                        strokeWidth={2}
+                        dot={{ fill: severityColors.info, strokeWidth: 2, r: 4 }}
                       />
                     </LineChart>
                   </ResponsiveContainer>
@@ -213,7 +386,7 @@ export default function DashboardPage() {
                   <ResponsiveContainer width="100%" height={300}>
                     <PieChart>
                       <Pie
-                        data={mockData.openPortsData}
+                        data={openPorts}
                         cx="50%"
                         cy="50%"
                         labelLine={false}
@@ -223,18 +396,14 @@ export default function DashboardPage() {
                         nameKey="name"
                         label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                       >
-                        {mockData.openPortsData.map((entry, index) => (
+                        {openPorts.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={pieColors[index % pieColors.length]} />
                         ))}
                       </Pie>
                       <Tooltip
-                        formatter={(value) => [`${value} instances`, "Count"]}
-                        contentStyle={{
-                          backgroundColor: "var(--background)",
-                          color: textColor,
-                          border: "1px solid var(--border)",
-                        }}
-                        labelStyle={{ color: textColor }}
+                        formatter={(value) => [`${value}`, "Count"]}
+                        contentStyle={tooltipStyle}
+                        labelStyle={tooltipLabelStyle}
                       />
                       <Legend wrapperStyle={{ color: textColor }} />
                     </PieChart>
@@ -254,7 +423,7 @@ export default function DashboardPage() {
                   <ResponsiveContainer width="100%" height={300}>
                     <PieChart>
                       <Pie
-                        data={mockData.protocolsData}
+                        data={protocols}
                         cx="50%"
                         cy="50%"
                         labelLine={false}
@@ -264,18 +433,14 @@ export default function DashboardPage() {
                         nameKey="name"
                         label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                       >
-                        {mockData.protocolsData.map((entry, index) => (
+                        {protocols.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={pieColors[index % pieColors.length]} />
                         ))}
                       </Pie>
                       <Tooltip
-                        formatter={(value) => [`${value} instances`, "Count"]}
-                        contentStyle={{
-                          backgroundColor: "var(--background)",
-                          color: textColor,
-                          border: "1px solid var(--border)",
-                        }}
-                        labelStyle={{ color: textColor }}
+                        formatter={(value) => [`${value}`, "Count"]}
+                        contentStyle={tooltipStyle}
+                        labelStyle={tooltipLabelStyle}
                       />
                       <Legend wrapperStyle={{ color: textColor }} />
                     </PieChart>

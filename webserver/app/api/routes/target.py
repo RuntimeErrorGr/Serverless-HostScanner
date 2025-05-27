@@ -161,6 +161,7 @@ def create_target(
     
     return {
         "id": new_target.id,
+        "uuid": new_target.uuid,
         "name": new_target.name,
         "user_id": new_target.user_id,
         "created_at": new_target.created_at,

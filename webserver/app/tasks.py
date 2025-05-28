@@ -379,7 +379,13 @@ def watch_scan(scan_uuid):
                     try:
                         prog = float(msg["data"].decode())
                         last_message_time = time.time()
-                        r.set(key_progress_cached, str(prog), ex=36000)
+                        last_progress = r.get(key_progress_cached)
+                        if last_progress:
+                            last_progress = float(last_progress)
+                            if prog > last_progress:
+                                r.set(key_progress_cached, str(prog), ex=36000)
+                        else:
+                            r.set(key_progress_cached, str(prog), ex=36000)
                     except ValueError:
                         pass  # Ignore non-numeric messages on progress channel
 

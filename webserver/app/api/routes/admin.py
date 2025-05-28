@@ -137,38 +137,71 @@ def get_user_details(
     user: OIDCUser = Depends(require_admin_role()),
     db: Session = Depends(get_db)
 ):
-    """Get detailed information about a specific user"""
+    """Get detailed information about a specific user, including related UUIDs and metadata"""
     try:
-        # First try to find by keycloak_uuid, then by database id
         db_user = db.query(User).filter(
-            or_(User.keycloak_uuid == user_id, User.id == int(user_id) if user_id.isdigit() else False)
+            or_(
+                User.keycloak_uuid == user_id,
+                User.id == int(user_id) if user_id.isdigit() else False
+            )
         ).first()
-        
+
         if not db_user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        # Get Keycloak user data
         try:
             kc_user = idp.get_user(user_id=db_user.keycloak_uuid)
         except Exception as e:
             log.warning(f"Could not fetch Keycloak user {db_user.keycloak_uuid}: {e}")
             raise HTTPException(status_code=404, detail="User not found in Keycloak")
 
-        # Get user statistics
         stats = db.query(
             func.count(Scan.id.distinct()).label("total_scans"),
             func.count(Target.id.distinct()).label("total_targets"),
             func.count(Finding.id.distinct()).label("total_findings"),
             func.count(Report.id.distinct()).label("total_reports")
-        ).outerjoin(
-            User.scans
-        ).outerjoin(
-            User.targets  
-        ).outerjoin(
-            Target.findings
-        ).outerjoin(
-            Scan.reports
-        ).filter(User.id == db_user.id).first()
+        ).outerjoin(User.scans).outerjoin(User.targets).outerjoin(Target.findings).outerjoin(Scan.reports).filter(User.id == db_user.id).first()
+
+        # Detailed related data
+        scan_data = [
+            {
+                "uuid": scan.uuid,
+                "name": scan.name,
+                "created_at": scan.created_at,
+                "status": scan.status.value
+            }
+            for scan in db_user.scans
+        ]
+
+        target_data = [
+            {
+                "uuid": target.uuid,
+                "name": target.name,
+                "created_at": target.created_at
+            }
+            for target in db_user.targets
+        ]
+
+        report_data = db.query(Report).join(Scan).filter(Scan.user_id == db_user.id).all()
+        report_data = [
+            {
+                "status": report.status.value,
+                "name": report.name,
+                "created_at": report.created_at
+            }
+            for report in report_data
+        ]
+
+        finding_data = db.query(Finding).join(Target).filter(Target.user_id == db_user.id).all()
+        finding_data = [
+            {
+                "uuid": finding.uuid,
+                "name": finding.name,
+                "created_at": finding.created_at,
+                "severity": finding.severity.value
+            }
+            for finding in finding_data
+        ]
 
         return {
             "id": db_user.id,
@@ -184,6 +217,10 @@ def get_user_details(
             "total_targets": stats.total_targets or 0,
             "total_findings": stats.total_findings or 0,
             "total_reports": stats.total_reports or 0,
+            "scans": scan_data,
+            "targets": target_data,
+            "reports": report_data,
+            "findings": finding_data,
         }
 
     except HTTPException:

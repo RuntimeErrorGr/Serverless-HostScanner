@@ -73,7 +73,7 @@ export function ParameterSection({ parameters, targets }: ParameterSectionProps)
                     <TableRow key={`target-${index}`} className="hover:bg-blue-50/30 dark:hover:bg-blue-950/10">
                       <TableCell className="font-mono text-sm">{target}</TableCell>
                       <TableCell>
-                        <CheckCircle className="h-4 w-4 mr-2" />
+                        <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
                       </TableCell>
                       <TableCell className="text-sm text-white">
                         Network target for scanning operations

@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { BarChart3, Layers, Target, FileText, Shield, AlertTriangle } from "lucide-react"
+import { BarChart3, Activity, Target, FileText, Shield, AlertTriangle } from "lucide-react"
 
 import {
   Sidebar,
@@ -26,7 +26,7 @@ export function AppSidebar() {
     },
     {
       title: "Scans",
-      icon: Layers,
+      icon: Activity,
       href: "/scans",
     },
     {

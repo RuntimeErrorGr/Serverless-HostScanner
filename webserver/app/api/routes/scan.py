@@ -3,6 +3,8 @@ import asyncio
 import json
 import redis
 import requests
+import re
+import ipaddress
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Request, HTTPException, WebSocket, WebSocketDisconnect
@@ -27,16 +29,62 @@ router = APIRouter()
 log = get_logger(__name__)
 
 
+def is_private_ip(ip_str):
+    try:
+        ip = ipaddress.ip_address(ip_str)
+        return ip.is_private
+    except ValueError:
+        return False
+
 def clean_target_list(targets):
     cleaned = []
 
+    ip_range_pattern = re.compile(r'^(\d{1,3}(?:\.\d{1,3}){3})-(\d{1,3}(?:\.\d{1,3}){0,3})$')
+
     for target in targets:
+        # Normalize the input
         if target.startswith("http://") or target.startswith("https://"):
             parsed = urlparse(target)
             target = parsed.netloc or parsed.path
+
         target = target.rstrip("/")
-        if target:
-            cleaned.append(target)
+
+        # Skip empty targets
+        if not target:
+            continue
+
+        # Handle CIDR (e.g., 192.168.0.0/16)
+        try:
+            network = ipaddress.ip_network(target, strict=False)
+            if network.is_private:
+                continue  # Skip private networks
+        except ValueError:
+            pass  # Not a valid CIDR
+
+        # Handle IP ranges (e.g., 192.168.1.1-20 or 192.168.1.1-192.168.1.20)
+        match = ip_range_pattern.match(target)
+        if match:
+            start_ip = match.group(1)
+            end_suffix = match.group(2)
+
+            # If it's a short suffix like "10", expand to full IP
+            if not '.' in end_suffix:
+                start_parts = start_ip.split('.')
+                end_ip = '.'.join(start_parts[:3] + [end_suffix])
+            else:
+                end_ip = end_suffix
+
+            try:
+                if ipaddress.ip_address(start_ip).is_private or ipaddress.ip_address(end_ip).is_private:
+                    continue  # Skip private IP ranges
+            except ValueError:
+                pass  # Skip if not valid IPs
+
+        # Handle plain single IP
+        if is_private_ip(target):
+            continue
+
+        cleaned.append(target)
 
     return list(set(cleaned))
 

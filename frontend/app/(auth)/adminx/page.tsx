@@ -37,13 +37,16 @@ import {
   Cpu,
   HardDrive,
   MemoryStickIcon as Memory,
-  Network,
-  Layers,
   Zap,
   ShieldX,
   ArrowLeft,
+  Activity,
+  Target,
+  FileText,
 } from "lucide-react"
 import { toast } from "sonner"
+import { useThemeColors } from "@/hooks/use-theme-colors"
+import { ResponsiveContainer } from "recharts"
 
 // Mock data for testing
 const mockUsers = [
@@ -430,16 +433,32 @@ export default function AdminXPage() {
   })
   const [stats, setStats] = useState<any>(null)
   const [systemStatus, setSystemStatus] = useState<any>(null)
+  const { pieColors, isDarkMode } = useThemeColors()
+
+  const tooltipStyle = {
+    backgroundColor: isDarkMode ? "#1f2937" : "#ffffff", // gray-800 : white
+    color: isDarkMode ? "#f9fafb" : "#111827", // gray-50 : gray-900
+    border: `1px solid ${isDarkMode ? "#374151" : "#e5e7eb"}`,
+    borderRadius: "8px",
+    boxShadow: isDarkMode
+      ? "0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2)"
+      : "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
+  }
+
+  const tooltipLabelStyle = {
+    color: isDarkMode ? "#d1d5db" : "#374151", // gray-300 : gray-700
+    fontWeight: "500",
+  }
 
   // Helper function to sort users with current user first
   const sortUsersWithCurrentFirst = (usersList: any[]) => {
     if (!user?.email) return usersList
-    
+
     return [...usersList].sort((a, b) => {
       // Current user goes first
       if (a.email === user.email) return -1
       if (b.email === user.email) return 1
-      
+
       // Then sort alphabetically by name
       return a.name.localeCompare(b.name)
     })
@@ -459,11 +478,11 @@ export default function AdminXPage() {
           console.error("Failed to fetch users:", err)
           return []
         })
-        
+
         // Transform user data to match frontend expectations
         const transformedUsers = usersData.map((user: any) => ({
           id: user.id.toString(),
-          name: `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username,
+          name: `${user.first_name || ""} ${user.last_name || ""}`.trim() || user.username,
           email: user.email,
           registeredDate: user.created_at,
           status: user.enabled ? "active" : "banned",
@@ -475,7 +494,7 @@ export default function AdminXPage() {
           },
           lastActive: user.last_login || user.created_at,
         }))
-        
+
         const sortedUsers = sortUsersWithCurrentFirst(transformedUsers)
         setUsers(sortedUsers)
         setFilteredUsers(sortedUsers)
@@ -492,13 +511,13 @@ export default function AdminXPage() {
           targetDistribution,
           reportGeneration,
         ] = await Promise.all([
-          adminAPI.getAggregatedStats().catch(() => ({ 
-            total_users: 0, 
-            total_scans: 0, 
-            total_targets: 0, 
-            total_findings: 0, 
-            total_reports: 0, 
-            active_scanning_users: 0 
+          adminAPI.getAggregatedStats().catch(() => ({
+            total_users: 0,
+            total_scans: 0,
+            total_targets: 0,
+            total_findings: 0,
+            total_reports: 0,
+            active_scanning_users: 0,
           })),
           adminAPI.getScanTrends().catch(() => []),
           adminAPI.getFindingsByPort().catch(() => []),
@@ -520,13 +539,16 @@ export default function AdminXPage() {
           scanTrends: scanTrends,
           findingsByPort: findingsByPort,
           findingsByService: findingsByService,
-          findingsBySeverity: findingsBySeverity.length > 0 ? findingsBySeverity : [
-            { name: "Critical", value: Math.floor(aggregatedStats.total_findings * 0.05), color: "#dc2626" },
-            { name: "High", value: Math.floor(aggregatedStats.total_findings * 0.15), color: "#ea580c" },
-            { name: "Medium", value: Math.floor(aggregatedStats.total_findings * 0.25), color: "#ca8a04" },
-            { name: "Low", value: Math.floor(aggregatedStats.total_findings * 0.35), color: "#2563eb" },
-            { name: "Info", value: Math.floor(aggregatedStats.total_findings * 0.20), color: "#6b7280" },
-          ],
+          findingsBySeverity:
+            findingsBySeverity.length > 0
+              ? findingsBySeverity
+              : [
+                  { name: "Critical", value: Math.floor(aggregatedStats.total_findings * 0.05), color: "#dc2626" },
+                  { name: "High", value: Math.floor(aggregatedStats.total_findings * 0.15), color: "#ea580c" },
+                  { name: "Medium", value: Math.floor(aggregatedStats.total_findings * 0.25), color: "#ca8a04" },
+                  { name: "Low", value: Math.floor(aggregatedStats.total_findings * 0.35), color: "#2563eb" },
+                  { name: "Info", value: Math.floor(aggregatedStats.total_findings * 0.2), color: "#6b7280" },
+                ],
           userActivity: userActivity,
           targetDistribution: targetDistribution,
           reportGeneration: reportGeneration,
@@ -743,7 +765,7 @@ export default function AdminXPage() {
                       </TableRow>
                     ) : (
                       filteredUsers.map((user) => (
-                        <TableRow key={user.id}>
+                        <TableRow key={user.id} className="cursor-pointer hover:bg-muted/50" onClick={() => router.push(`/adminx/users/${user.id}`)} >
                           <TableCell>
                             <div>
                               <div className="font-medium">
@@ -787,7 +809,8 @@ export default function AdminXPage() {
                                 <Button
                                   variant="destructive"
                                   size="sm"
-                                  onClick={() => {
+                                  onClick={(e) => {
+                                    e.stopPropagation()
                                     setSelectedUser(user)
                                     setBanDialogOpen(true)
                                   }}
@@ -796,7 +819,7 @@ export default function AdminXPage() {
                                   Ban
                                 </Button>
                               ) : (
-                                <Button variant="outline" size="sm" onClick={() => handleUnbanUser(user.id)}>
+                                <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleUnbanUser(user.id) }}>
                                   <CheckCircle className="mr-1 h-3 w-3" />
                                   Unban
                                 </Button>
@@ -892,7 +915,10 @@ export default function AdminXPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Total Users</CardTitle>
+                    <CardTitle className="text-sm font-medium text-muted-foreground flex items-center">
+                      <Users className="mr-2 h-4 w-4" />
+                      Total Users
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">{stats.totalUsers}</div>
@@ -900,7 +926,10 @@ export default function AdminXPage() {
                 </Card>
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Total Scans</CardTitle>
+                    <CardTitle className="text-sm font-medium text-muted-foreground flex items-center">
+                      <Activity className="mr-2 h-4 w-4" />
+                      Total Scans
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">{stats.totalScans}</div>
@@ -908,7 +937,10 @@ export default function AdminXPage() {
                 </Card>
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Total Targets</CardTitle>
+                    <CardTitle className="text-sm font-medium text-muted-foreground flex items-center">
+                      <Target className="mr-2 h-4 w-4" />
+                      Total Targets
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">{stats.totalTargets}</div>
@@ -916,7 +948,10 @@ export default function AdminXPage() {
                 </Card>
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Total Findings</CardTitle>
+                    <CardTitle className="text-sm font-medium text-muted-foreground flex items-center">
+                      <Search className="mr-2 h-4 w-4" />
+                      Total Findings
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">{stats.totalFindings}</div>
@@ -924,7 +959,10 @@ export default function AdminXPage() {
                 </Card>
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Total Reports</CardTitle>
+                    <CardTitle className="text-sm font-medium text-muted-foreground flex items-center">
+                      <FileText className="mr-2 h-4 w-4" />
+                      Total Reports
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">{stats.totalReports}</div>
@@ -947,9 +985,11 @@ export default function AdminXPage() {
                       data={stats.findingsByPort}
                       index="name"
                       categories={["value"]}
-                      colors={stats.findingsByPort.map((item: any) => item.color)}
+                      colors={pieColors}
                       valueFormatter={(value) => `${value} findings`}
                       className="h-72"
+                      tooltipStyle={tooltipStyle}
+                      tooltipLabelStyle={tooltipLabelStyle}
                     />
                   </CardContent>
                 </Card>
@@ -963,14 +1003,18 @@ export default function AdminXPage() {
                     <CardDescription>Distribution of findings across service types</CardDescription>
                   </CardHeader>
                   <CardContent className="h-80">
+                  <ResponsiveContainer width="100%" height={300}>
                     <PieChart
                       data={stats.findingsByService}
                       index="name"
                       categories={["value"]}
-                      colors={stats.findingsByService.map((item: any) => item.color)}
-                      valueFormatter={(value) => `${value} findings`}
+                      colors={pieColors}
+                      valueFormatter={(value: number) => `${value} findings`}
                       className="h-72"
+                      tooltipStyle={tooltipStyle}
+                      tooltipLabelStyle={tooltipLabelStyle}
                     />
+                  </ResponsiveContainer>
                   </CardContent>
                 </Card>
 
@@ -987,9 +1031,11 @@ export default function AdminXPage() {
                       data={stats.findingsBySeverity}
                       index="name"
                       categories={["value"]}
-                      colors={stats.findingsBySeverity.map((item: any) => item.color)}
+                      colors={pieColors}
                       valueFormatter={(value) => `${value} findings`}
                       className="h-72"
+                      tooltipStyle={tooltipStyle}
+                      tooltipLabelStyle={tooltipLabelStyle}
                     />
                   </CardContent>
                 </Card>
@@ -997,7 +1043,7 @@ export default function AdminXPage() {
 
               {/* Charts - Row 3 */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card>
+                <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center text-lg">
                       <LineChartIcon className="mr-2 h-5 w-5" />

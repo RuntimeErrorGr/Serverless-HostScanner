@@ -22,6 +22,8 @@ interface ChartProps {
   colors: string[]
   valueFormatter?: (value: number) => string
   className?: string
+  tooltipStyle?: React.CSSProperties
+  tooltipLabelStyle?: React.CSSProperties
 }
 
 export const LineChart: React.FC<ChartProps> = ({
@@ -73,6 +75,8 @@ export const PieChart: React.FC<ChartProps> = ({
   colors,
   valueFormatter = (value) => value.toString(),
   className,
+  tooltipStyle,
+  tooltipLabelStyle,
 }) => {
   // For pie charts, we use the color property from data if available, otherwise use the colors array
   const chartData = data.map((item, idx) => ({
@@ -91,7 +95,7 @@ export const PieChart: React.FC<ChartProps> = ({
             labelLine={false}
             label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
             outerRadius={80}
-            fill="#8884d8"
+            fill="#cccccc"
             dataKey={categories[0]}
             nameKey={index}
           >
@@ -101,11 +105,12 @@ export const PieChart: React.FC<ChartProps> = ({
           </Pie>
           <Tooltip
             formatter={(value: any) => [valueFormatter(value), ""]}
-            contentStyle={{
+            contentStyle={tooltipStyle || {
               backgroundColor: "hsl(var(--background))",
               border: "1px solid hsl(var(--border))",
               borderRadius: "6px",
             }}
+            labelStyle={tooltipLabelStyle}
           />
         </RechartsPieChart>
       </ResponsiveContainer>

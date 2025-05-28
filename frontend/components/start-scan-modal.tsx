@@ -49,11 +49,43 @@ const getPortValidationError = () => {
   return "Ports must be comma-separated numbers or ranges (e.g., 80,443,1000-2000) between 1-65535"
 }
 
+const isPrivateIp = (ip: string): boolean => {
+  // Matches single private IPs
+  const singlePrivateIp = /^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/;
+  return singlePrivateIp.test(ip);
+};
+
+const isCidr = (val: string): boolean => {
+  return /^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(val);
+};
+
+const isIpRange = (val: string): boolean => {
+  return /^\d{1,3}(\.\d{1,3}){3}-\d{1,3}(\.\d{1,3}){0,3}$/.test(val);
+};
+
+const hasPrivateTarget = (targets: string): boolean => {
+  const entries = targets.split(/\s|,|;/).map(t => t.trim()).filter(Boolean);
+
+  for (const entry of entries) {
+    const noProtocol = entry.replace(/^https?:\/\//, "").split("/")[0];
+
+    if (isCidr(noProtocol) || isIpRange(noProtocol) || isPrivateIp(noProtocol)) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
 // Validation schema for the form
 const formSchema = z
   .object({
     targets: z.string().min(1, {
       message: "At least one target is required.",
+    }).refine((val) => {
+      return !hasPrivateTarget(val)
+    }, {
+      message: "Private IP addresses or localhost are not allowed.",
     }),
     scanType: z.enum(["default", "deep", "custom"]),
     portTypes: z.array(z.string()).min(1, {

@@ -14,13 +14,11 @@ import {
   Legend,
   LineChart,
   Line,
-  PieChart,
-  Pie,
-  Cell,
 } from "recharts"
 import { useThemeColors } from "@/hooks/use-theme-colors"
 import { useEffect, useState } from "react"
 import { dashboardAPI } from "@/lib/api"
+import { PieChart } from "@/components/ui/chart"
 
 // Types for dashboard data
 interface DashboardStats {
@@ -93,11 +91,10 @@ export default function DashboardPage() {
     info: "#6b7280", // gray-500
   }
 
-  // Enhanced tooltip colors for better elegance
   const tooltipStyle = {
     backgroundColor: isDarkMode ? "#1f2937" : "#ffffff", // gray-800 : white
     color: isDarkMode ? "#f9fafb" : "#111827", // gray-50 : gray-900
-    border: `1px solid ${isDarkMode ? "#374151" : "#e5e7eb"}`, // gray-700 : gray-200
+    border: `1px solid ${isDarkMode ? "#374151" : "#e5e7eb"}`,
     borderRadius: "8px",
     boxShadow: isDarkMode
       ? "0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2)"
@@ -305,7 +302,7 @@ export default function DashboardPage() {
                         labelStyle={tooltipLabelStyle}
                       />
                       <Legend wrapperStyle={{ color: textColor }} />
-                      <Bar dataKey="value" name="Scans" fill={barColors.primary} />
+                      <Bar dataKey="value" name="Scans no." fill={barColors.primary} />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
@@ -391,29 +388,16 @@ export default function DashboardPage() {
               <CardContent>
                 {!isEmptyOpenPorts ? (
                   <ResponsiveContainer width="100%" height={300}>
-                    <PieChart>
-                      <Pie
-                        data={openPorts}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        outerRadius={100}
-                        fill="#8884d8"
-                        dataKey="value"
-                        nameKey="name"
-                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                      >
-                        {openPorts.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={pieColors[index % pieColors.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        formatter={(value) => [`${value}`, "Count"]}
-                        contentStyle={tooltipStyle}
-                        labelStyle={tooltipLabelStyle}
-                      />
-                      <Legend wrapperStyle={{ color: textColor }} />
-                    </PieChart>
+                    <PieChart
+                      data={openPorts}
+                      index="name"
+                      categories={["value"]}
+                      colors={pieColors}
+                      valueFormatter={(value: number) => `${value} findings`}
+                      className="h-72"
+                      tooltipStyle={tooltipStyle}
+                      tooltipLabelStyle={tooltipLabelStyle}
+                    />
                   </ResponsiveContainer>
                 ) : (
                   <EmptyChart title="No port data" description="Complete scans to see open ports distribution" />
@@ -428,29 +412,16 @@ export default function DashboardPage() {
               <CardContent>
                 {!isEmptyServices ? (
                   <ResponsiveContainer width="100%" height={300}>
-                    <PieChart>
-                      <Pie
-                        data={services}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        outerRadius={100}
-                        fill="#8884d8"
-                        dataKey="value"
-                        nameKey="name"
-                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                      >
-                        {services.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={pieColors[index % pieColors.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        formatter={(value) => [`${value}`, "Count"]}
-                        contentStyle={tooltipStyle}
-                        labelStyle={tooltipLabelStyle}
-                      />
-                      <Legend wrapperStyle={{ color: textColor }} />
-                    </PieChart>
+                    <PieChart
+                      data={services}
+                      index="name"
+                      categories={["value"]}
+                      colors={pieColors}
+                      valueFormatter={(value: number) => `${value} findings`}
+                      className="h-72"
+                      tooltipStyle={tooltipStyle}
+                      tooltipLabelStyle={tooltipLabelStyle}
+                    />
                   </ResponsiveContainer>
                 ) : (
                   <EmptyChart title="No service data" description="Complete scans to see service distribution" />

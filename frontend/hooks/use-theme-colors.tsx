@@ -31,6 +31,10 @@ export function useThemeColors() {
       isDarkMode ? "#b3b3b3" : "#4d4d4d",              // Mid gray / Mid dark gray
       isDarkMode ? "#999999" : "#666666",              // Mid-dark gray / Light-dark gray
       isDarkMode ? "#808080" : "#808080",              // Neutral gray
+      isDarkMode ? "#666666" : "#999999",              // Mid-dark gray / Light-dark gray
+      isDarkMode ? "#4d4d4d" : "#b3b3b3",              // Mid gray / Mid dark gray
+      isDarkMode ? "#333333" : "#cccccc",              // Dark gray / Lighter gray
+      isDarkMode ? "#1a1a1a" : "#e5e5e5",              // Dark gray / Lighter gray
     ],
     textColor: isDarkMode ? "#ffffff" : "#000000",
     gridColor: isDarkMode ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)",

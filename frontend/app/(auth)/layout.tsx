@@ -3,6 +3,7 @@ import { SidebarProvider } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { Navbar } from "@/components/navbar"
 import { Toaster } from "@/components/ui/toaster"
+import { BanStatusChecker } from "@/components/ban-status-checker"
 
 export default function AuthLayout({
   children,
@@ -20,6 +21,7 @@ export default function AuthLayout({
           </main>
         </div>
       </div>
+      <BanStatusChecker />
       <Toaster />
     </SidebarProvider>
   )

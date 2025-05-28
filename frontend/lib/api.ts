@@ -175,7 +175,16 @@ export const dashboardAPI = {
   getScanActivity: () => fetchAPI("/dashboard/scan-activity"),
   getVulnerabilityTrends: () => fetchAPI("/dashboard/vulnerability-trends"),
   getOpenPorts: () => fetchAPI("/dashboard/open-ports"),
-  getProtocols: () => fetchAPI("/dashboard/protocols"),
+  getServices: () => fetchAPI("/dashboard/services"),
+}
+
+// General API functions
+export const generalAPI = {
+  // Ban status check - available to all authenticated users
+  checkBanStatus: () => fetchAPI("/admin/check-ban-status"),
+  
+  // Admin status check - available to all authenticated users
+  checkAdminStatus: () => fetchAPI("/admin/check-admin-status"),
 }
 
 // Admin API
@@ -192,12 +201,13 @@ export const adminAPI = {
     fetchAPI(`/admin/users/${userId}/unban`, {
       method: "POST",
     }),
-
+  
   // Aggregated statistics
   getAggregatedStats: () => fetchAPI("/admin/stats/aggregated"),
   getScanTrends: () => fetchAPI("/admin/stats/scan-trends"),
   getFindingsByPort: () => fetchAPI("/admin/stats/findings-by-port"),
   getFindingsByService: () => fetchAPI("/admin/stats/findings-by-service"),
+  getFindingsBySeverity: () => fetchAPI("/admin/stats/findings-by-severity"),
   getUserActivity: () => fetchAPI("/admin/stats/user-activity"),
   getTargetDistribution: () => fetchAPI("/admin/stats/target-distribution"),
   getReportGeneration: () => fetchAPI("/admin/stats/report-generation"),
@@ -205,9 +215,7 @@ export const adminAPI = {
   // System monitoring
   getSystemOverview: () => fetchAPI("/admin/system/overview"),
   getClusterStatus: () => fetchAPI("/admin/system/clusters"),
-  getDeploymentStatus: () => fetchAPI("/admin/system/deployments"),
   getResourceUsage: () => fetchAPI("/admin/system/resources"),
   getNodeMetrics: () => fetchAPI("/admin/system/nodes"),
-  getServiceHealth: () => fetchAPI("/admin/system/services"),
   getOpenFaasMetrics: () => fetchAPI("/admin/system/openfaas"),
 }

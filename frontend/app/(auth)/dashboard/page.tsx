@@ -78,7 +78,7 @@ export default function DashboardPage() {
   const [scanActivity, setScanActivity] = useState<ScanActivityData[]>([])
   const [vulnerabilityTrends, setVulnerabilityTrends] = useState<VulnerabilityTrendsData[]>([])
   const [openPorts, setOpenPorts] = useState<PortData[]>([])
-  const [protocols, setProtocols] = useState<ProtocolData[]>([])
+  const [services, setServices] = useState<ProtocolData[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -116,19 +116,19 @@ export default function DashboardPage() {
         setError(null)
 
         // Fetch all dashboard data
-        const [statsData, scanActivityData, vulnerabilityTrendsData, openPortsData, protocolsData] = await Promise.all([
+        const [statsData, scanActivityData, vulnerabilityTrendsData, openPortsData, servicesData] = await Promise.all([
           dashboardAPI.getStats(),
           dashboardAPI.getScanActivity(),
           dashboardAPI.getVulnerabilityTrends(),
           dashboardAPI.getOpenPorts(),
-          dashboardAPI.getProtocols(),
+          dashboardAPI.getServices(),
         ])
 
         setStats(statsData)
         setScanActivity(scanActivityData)
         setVulnerabilityTrends(vulnerabilityTrendsData)
         setOpenPorts(openPortsData)
-        setProtocols(protocolsData)
+        setServices(servicesData)
       } catch (err) {
         console.error("Failed to fetch dashboard data:", err)
         setError("Failed to load dashboard data")
@@ -172,7 +172,7 @@ export default function DashboardPage() {
           { name: "Port 21", value: 45 },
           { name: "Port 3389", value: 32 },
         ])
-        setProtocols([
+        setServices([
           { name: "HTTP", value: 124 },
           { name: "HTTPS", value: 98 },
           { name: "SSH", value: 76 },
@@ -210,7 +210,14 @@ export default function DashboardPage() {
     )
   }
 
-  const isEmpty = !stats || scanActivity.length === 0
+  const isEmptyStats = !stats
+
+  // scan activity is empty if all values are 0
+  const isEmptyScanActivity = scanActivity.every((item) => item.value === 0)
+
+  const isEmptyVulnerabilityTrends = vulnerabilityTrends.length === 0
+  const isEmptyOpenPorts = openPorts.length === 0
+  const isEmptyServices = services.length === 0
 
   return (
     <div className="space-y-6 w-full">
@@ -286,7 +293,7 @@ export default function DashboardPage() {
                 <CardDescription>Number of scans performed per month</CardDescription>
               </CardHeader>
               <CardContent>
-                {!isEmpty ? (
+                {!isEmptyScanActivity ? (
                   <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={scanActivity}>
                       <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
@@ -315,7 +322,7 @@ export default function DashboardPage() {
                 <CardDescription>Vulnerabilities discovered over time by severity level</CardDescription>
               </CardHeader>
               <CardContent>
-                {!isEmpty ? (
+                {!isEmptyVulnerabilityTrends ? (
                   <ResponsiveContainer width="100%" height={300}>
                     <LineChart data={vulnerabilityTrends}>
                       <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
@@ -382,7 +389,7 @@ export default function DashboardPage() {
                 <CardDescription>Most common open ports discovered</CardDescription>
               </CardHeader>
               <CardContent>
-                {!isEmpty ? (
+                {!isEmptyOpenPorts ? (
                   <ResponsiveContainer width="100%" height={300}>
                     <PieChart>
                       <Pie
@@ -415,15 +422,15 @@ export default function DashboardPage() {
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle>Protocol Distribution</CardTitle>
-                <CardDescription>Most common protocols discovered</CardDescription>
+                <CardTitle>Services Distribution</CardTitle>
+                <CardDescription>Most common services discovered</CardDescription>
               </CardHeader>
               <CardContent>
-                {!isEmpty ? (
+                {!isEmptyServices ? (
                   <ResponsiveContainer width="100%" height={300}>
                     <PieChart>
                       <Pie
-                        data={protocols}
+                        data={services}
                         cx="50%"
                         cy="50%"
                         labelLine={false}
@@ -433,7 +440,7 @@ export default function DashboardPage() {
                         nameKey="name"
                         label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                       >
-                        {protocols.map((entry, index) => (
+                        {services.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={pieColors[index % pieColors.length]} />
                         ))}
                       </Pie>
@@ -446,7 +453,7 @@ export default function DashboardPage() {
                     </PieChart>
                   </ResponsiveContainer>
                 ) : (
-                  <EmptyChart title="No protocol data" description="Complete scans to see protocol distribution" />
+                  <EmptyChart title="No service data" description="Complete scans to see service distribution" />
                 )}
               </CardContent>
             </Card>

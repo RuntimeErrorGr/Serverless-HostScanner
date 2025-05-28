@@ -187,7 +187,7 @@ export default function TargetDetailPage() {
             </div>
             {flagInfo && (
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Country</p>
+                <p className="text-sm font-medium text-muted-foreground">DNS response</p>
                 <div className="mt-1 flex items-center space-x-2">
                   <img src={flagInfo.flag_url} alt={flagInfo.country} className="w-6 h-4 rounded-sm" />
                   <span>{flagInfo.country}</span>

@@ -193,6 +193,11 @@ def get_vulnerability_trends(user: OIDCUser = Depends(idp.get_current_user()), d
         for month, critical, high, medium, low, info in results
     ]
 
+    # add missing months
+    for month in month_names:
+        if not any(row["name"] == month for row in trends):
+            trends.append({"name": month, "critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0})
+
     # sort in calendar order
     trends.sort(key=lambda x: month_names.index(x["name"]))
     log.info("Vulnerability trends: %s", trends)
@@ -202,7 +207,7 @@ def get_vulnerability_trends(user: OIDCUser = Depends(idp.get_current_user()), d
 def get_open_ports(user: OIDCUser = Depends(idp.get_current_user()), db: Session = Depends(get_db)):
     """
     Get the number of open ports from the findings table for the current user.
-    Returns a list of dicts: [{ name: "Port 80", value: 124 }, ...]
+    Returns a list of dicts: [{ name: "Port 80/tcp", value: 124 }, ...]
     """
 
     # Get the user object
@@ -212,7 +217,7 @@ def get_open_ports(user: OIDCUser = Depends(idp.get_current_user()), db: Session
 
     # Query: Count open ports from findings related to the user's targets
     results = (
-        db.query(Finding.port, func.count(Finding.id).label("count"))
+        db.query(Finding.port, Finding.protocol, func.count(Finding.id).label("count"))
         .join(Finding.target)
         .filter(Target.user_id == db_user.id, Finding.port_state == PortState.OPEN)
         .group_by(Finding.port)
@@ -221,18 +226,18 @@ def get_open_ports(user: OIDCUser = Depends(idp.get_current_user()), db: Session
     )
 
     # Format the result
-    open_ports = [{"name": f"Port {port}", "value": count} for port, count in results]
+    open_ports = [{"name": f"{port}/{protocol}", "value": count} for port, protocol, count in results]
     log.info("Open ports: %s", open_ports)
     return open_ports
 
 
-@router.get("/protocols")
-def get_protocols(user: OIDCUser = Depends(idp.get_current_user()), db: Session = Depends(get_db)):
+@router.get("/services")
+def get_services(user: OIDCUser = Depends(idp.get_current_user()), db: Session = Depends(get_db)):
     """
-    Returns protocol usage frequency for the current user in this format:
+    Returns service usage frequency for the current user in this format:
     [
-        { "name": "HTTP", "value": 124 },
-        { "name": "HTTPS", "value": 98 },
+        { "name": "SSH", "value": 124 },
+        { "name": "HTTP", "value": 98 },
         ...
     ]
     """
@@ -242,24 +247,27 @@ def get_protocols(user: OIDCUser = Depends(idp.get_current_user()), db: Session 
     if not db_user:
         return []
 
-    # Query findings by protocol
+    # Query findings by service
     results = (
-        db.query(Finding.protocol, func.count(Finding.id).label("count"))
+        db.query(Finding.service, func.count(Finding.id).label("count"))
         .join(Finding.target)
         .filter(Target.user_id == db_user.id)
-        .group_by(Finding.protocol)
+        .group_by(Finding.service)
         .order_by(func.count(Finding.id).desc())
         .all()
     )
 
     # Format result
-    protocols = [
-        {"name": protocol.upper() if protocol else "UNKNOWN", "value": count}
-        for protocol, count in results
+    services = [
+        {"name": service.upper() if service else "UNKNOWN", "value": count}
+        for service, count in results
     ]
 
-    log.info("Protocols: %s", protocols)
-    return protocols
+    # filter unknown services
+    services = [service for service in services if service["name"] != "UNKNOWN"]
+
+    log.info("Services: %s", services)
+    return services
 
 
 

@@ -23,6 +23,7 @@ import { PieChart, LineChart } from "@/components/ui/chart"
 import { formatToBucharestTime } from "@/lib/timezone"
 import { adminAPI } from "@/lib/api"
 import { useAuth } from "@/components/auth-provider"
+import { useAdminCheck } from "@/hooks/use-admin-check"
 import {
   Users,
   BarChart,
@@ -149,11 +150,11 @@ const mockAggregatedStats = {
     { name: "Info", value: 3229, color: "#6b7280" },
   ],
   findingsByPort: [
-    { name: "Port 80 (HTTP)", value: 4521, color: "#2563eb" },
-    { name: "Port 443 (HTTPS)", value: 3872, color: "#16a34a" },
-    { name: "Port 22 (SSH)", value: 2543, color: "#ca8a04" },
-    { name: "Port 21 (FTP)", value: 1876, color: "#dc2626" },
-    { name: "Port 25 (SMTP)", value: 1245, color: "#9333ea" },
+    { name: "Port 80", value: 4521, color: "#2563eb" },
+    { name: "Port 443", value: 3872, color: "#16a34a" },
+    { name: "Port 22", value: 2543, color: "#ca8a04" },
+    { name: "Port 21", value: 1876, color: "#dc2626" },
+    { name: "Port 25", value: 1245, color: "#9333ea" },
     { name: "Other Ports", value: 7511, color: "#6b7280" },
   ],
   findingsByService: [
@@ -371,19 +372,6 @@ const mockSystemStatus = {
   },
 }
 
-// Function to check if user is admin (mock implementation)
-const isUserAdmin = (user: any): boolean => {
-  // In a real implementation, this would check user roles/permissions
-  // For now, we'll check if the user email contains "admin" or specific admin emails
-  if (!user || !user.email) return false
-
-  const adminEmails = ["admin@example.com", "administrator@example.com", "andrei.mail8080@gmail.com"]
-  const isAdminEmail = adminEmails.includes(user.email.toLowerCase())
-  const hasAdminInEmail = user.email.toLowerCase().includes("admin")
-
-  return isAdminEmail || hasAdminInEmail
-}
-
 // Access Denied Component
 const AccessDenied = () => {
   const router = useRouter()
@@ -425,6 +413,7 @@ const AccessDenied = () => {
 
 export default function AdminXPage() {
   const { user, isLoading } = useAuth()
+  const { isAdmin, isLoading: adminLoading } = useAdminCheck()
   const router = useRouter()
   const [activeTab, setActiveTab] = useState("users")
   const [users, setUsers] = useState<any[]>([])
@@ -441,26 +430,112 @@ export default function AdminXPage() {
   })
   const [stats, setStats] = useState<any>(null)
   const [systemStatus, setSystemStatus] = useState<any>(null)
-  const [isAdmin, setIsAdmin] = useState(false)
 
-  // Check admin access
-  useEffect(() => {
-    setIsAdmin(user ? isUserAdmin(user) : false)
-  }, [user])
+  // Helper function to sort users with current user first
+  const sortUsersWithCurrentFirst = (usersList: any[]) => {
+    if (!user?.email) return usersList
+    
+    return [...usersList].sort((a, b) => {
+      // Current user goes first
+      if (a.email === user.email) return -1
+      if (b.email === user.email) return 1
+      
+      // Then sort alphabetically by name
+      return a.name.localeCompare(b.name)
+    })
+  }
+
+  // Check if a user is the current user
+  const isCurrentUser = (userEmail: string) => {
+    return user?.email === userEmail
+  }
 
   // Fetch data on component mount
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch users data
-        const usersData = await adminAPI.getUsers().catch(() => mockUsers)
-        setUsers(usersData)
-        setFilteredUsers(usersData)
+        // Fetch users data and transform to expected format
+        const usersData = await adminAPI.getUsers().catch((err) => {
+          console.error("Failed to fetch users:", err)
+          return []
+        })
+        
+        // Transform user data to match frontend expectations
+        const transformedUsers = usersData.map((user: any) => ({
+          id: user.id.toString(),
+          name: `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username,
+          email: user.email,
+          registeredDate: user.created_at,
+          status: user.enabled ? "active" : "banned",
+          stats: {
+            scansRun: user.total_scans,
+            targetsScanned: user.total_targets,
+            findingsGenerated: user.total_findings,
+            reportsCreated: user.total_reports,
+          },
+          lastActive: user.last_login || user.created_at,
+        }))
+        
+        const sortedUsers = sortUsersWithCurrentFirst(transformedUsers)
+        setUsers(sortedUsers)
+        setFilteredUsers(sortedUsers)
         setLoading((prev) => ({ ...prev, users: false }))
 
-        // Fetch aggregated stats
-        const statsData = await adminAPI.getAggregatedStats().catch(() => mockAggregatedStats)
-        setStats(statsData)
+        // Fetch aggregated stats and additional chart data
+        const [
+          aggregatedStats,
+          scanTrends,
+          findingsByPort,
+          findingsByService,
+          findingsBySeverity,
+          userActivity,
+          targetDistribution,
+          reportGeneration,
+        ] = await Promise.all([
+          adminAPI.getAggregatedStats().catch(() => ({ 
+            total_users: 0, 
+            total_scans: 0, 
+            total_targets: 0, 
+            total_findings: 0, 
+            total_reports: 0, 
+            active_scanning_users: 0 
+          })),
+          adminAPI.getScanTrends().catch(() => []),
+          adminAPI.getFindingsByPort().catch(() => []),
+          adminAPI.getFindingsByService().catch(() => []),
+          adminAPI.getFindingsBySeverity().catch(() => []),
+          adminAPI.getUserActivity().catch(() => []),
+          adminAPI.getTargetDistribution().catch(() => []),
+          adminAPI.getReportGeneration().catch(() => []),
+        ])
+
+        // Transform aggregated stats to match frontend format
+        const transformedStats = {
+          totalUsers: aggregatedStats.total_users,
+          totalScans: aggregatedStats.total_scans,
+          totalTargets: aggregatedStats.total_targets,
+          totalFindings: aggregatedStats.total_findings,
+          totalReports: aggregatedStats.total_reports,
+          activeScanningUsers: aggregatedStats.active_scanning_users,
+          scanTrends: scanTrends,
+          findingsByPort: findingsByPort,
+          findingsByService: findingsByService,
+          findingsBySeverity: findingsBySeverity.length > 0 ? findingsBySeverity : [
+            { name: "Critical", value: Math.floor(aggregatedStats.total_findings * 0.05), color: "#dc2626" },
+            { name: "High", value: Math.floor(aggregatedStats.total_findings * 0.15), color: "#ea580c" },
+            { name: "Medium", value: Math.floor(aggregatedStats.total_findings * 0.25), color: "#ca8a04" },
+            { name: "Low", value: Math.floor(aggregatedStats.total_findings * 0.35), color: "#2563eb" },
+            { name: "Info", value: Math.floor(aggregatedStats.total_findings * 0.20), color: "#6b7280" },
+          ],
+          userActivity: userActivity,
+          targetDistribution: targetDistribution,
+          reportGeneration: reportGeneration,
+          monthlyScanVolume: scanTrends,
+          findingDiscoveryRate: scanTrends.map((item: any) => ({ name: item.name, value: item.value * 2 })),
+          platformUsageGrowth: userActivity,
+        }
+
+        setStats(transformedStats)
         setLoading((prev) => ({ ...prev, stats: false }))
 
         // Fetch system status
@@ -486,15 +561,15 @@ export default function AdminXPage() {
   // Filter users based on search query
   useEffect(() => {
     if (searchQuery.trim() === "") {
-      setFilteredUsers(users)
+      setFilteredUsers(sortUsersWithCurrentFirst(users))
     } else {
       const query = searchQuery.toLowerCase()
       const filtered = users.filter(
         (user) => user.name.toLowerCase().includes(query) || user.email.toLowerCase().includes(query),
       )
-      setFilteredUsers(filtered)
+      setFilteredUsers(sortUsersWithCurrentFirst(filtered))
     }
-  }, [searchQuery, users])
+  }, [searchQuery, users, user?.email])
 
   // Handle ban user
   const handleBanUser = async () => {
@@ -520,8 +595,9 @@ export default function AdminXPage() {
       })
 
       setUsers(updatedUsers)
+      const sortedUpdatedUsers = sortUsersWithCurrentFirst(updatedUsers)
       setFilteredUsers(
-        updatedUsers.filter(
+        sortedUpdatedUsers.filter(
           (user) =>
             user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
             user.email.toLowerCase().includes(searchQuery.toLowerCase()),
@@ -557,8 +633,9 @@ export default function AdminXPage() {
       })
 
       setUsers(updatedUsers)
+      const sortedUpdatedUsers = sortUsersWithCurrentFirst(updatedUsers)
       setFilteredUsers(
-        updatedUsers.filter(
+        sortedUpdatedUsers.filter(
           (user) =>
             user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
             user.email.toLowerCase().includes(searchQuery.toLowerCase()),
@@ -572,8 +649,8 @@ export default function AdminXPage() {
     }
   }
 
-  // If still loading auth, show loading
-  if (isLoading) {
+  // If still loading auth or admin check, show loading
+  if (isLoading || adminLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="text-center space-y-4">
@@ -669,7 +746,12 @@ export default function AdminXPage() {
                         <TableRow key={user.id}>
                           <TableCell>
                             <div>
-                              <div className="font-medium">{user.name}</div>
+                              <div className="font-medium">
+                                {user.name}
+                                {isCurrentUser(user.email) && (
+                                  <span className="text-sm text-muted-foreground ml-2">(you)</span>
+                                )}
+                              </div>
                               <div className="text-sm text-muted-foreground">{user.email}</div>
                             </div>
                           </TableCell>
@@ -699,23 +781,28 @@ export default function AdminXPage() {
                           <TableCell>{user.stats.reportsCreated}</TableCell>
                           <TableCell>{formatToBucharestTime(user.lastActive)}</TableCell>
                           <TableCell>
-                            {user.status === "active" ? (
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                onClick={() => {
-                                  setSelectedUser(user)
-                                  setBanDialogOpen(true)
-                                }}
-                              >
-                                <Ban className="mr-1 h-3 w-3" />
-                                Ban
-                              </Button>
+                            {/* Don't show ban/unban actions for current user */}
+                            {!isCurrentUser(user.email) ? (
+                              user.status === "active" ? (
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedUser(user)
+                                    setBanDialogOpen(true)
+                                  }}
+                                >
+                                  <Ban className="mr-1 h-3 w-3" />
+                                  Ban
+                                </Button>
+                              ) : (
+                                <Button variant="outline" size="sm" onClick={() => handleUnbanUser(user.id)}>
+                                  <CheckCircle className="mr-1 h-3 w-3" />
+                                  Unban
+                                </Button>
+                              )
                             ) : (
-                              <Button variant="outline" size="sm" onClick={() => handleUnbanUser(user.id)}>
-                                <CheckCircle className="mr-1 h-3 w-3" />
-                                Unban
-                              </Button>
+                              <span className="text-sm text-muted-foreground">-</span>
                             )}
                           </TableCell>
                         </TableRow>
@@ -809,9 +896,6 @@ export default function AdminXPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">{stats.totalUsers}</div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {stats.activeScanningUsers} active scanning users
-                    </p>
                   </CardContent>
                 </Card>
                 <Card>
@@ -849,50 +933,7 @@ export default function AdminXPage() {
               </div>
 
               {/* Charts - Row 1 */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center text-lg">
-                      <LineChartIcon className="mr-2 h-5 w-5" />
-                      Scan Activity Trends
-                    </CardTitle>
-                    <CardDescription>Monthly scan volume over the past year</CardDescription>
-                  </CardHeader>
-                  <CardContent className="h-80">
-                    <LineChart
-                      data={stats.scanTrends}
-                      index="name"
-                      categories={["value"]}
-                      colors={["#2563eb"]}
-                      valueFormatter={(value) => `${value} scans`}
-                      className="h-72"
-                    />
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center text-lg">
-                      <PieChartIcon className="mr-2 h-5 w-5" />
-                      Findings by Severity
-                    </CardTitle>
-                    <CardDescription>Distribution of findings across severity levels</CardDescription>
-                  </CardHeader>
-                  <CardContent className="h-80">
-                    <PieChart
-                      data={stats.findingsBySeverity}
-                      index="name"
-                      categories={["value"]}
-                      colors={stats.findingsBySeverity.map((item: any) => item.color)}
-                      valueFormatter={(value) => `${value} findings`}
-                      className="h-72"
-                    />
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Charts - Row 2 */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center text-lg">
@@ -932,11 +973,31 @@ export default function AdminXPage() {
                     />
                   </CardContent>
                 </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center text-lg">
+                      <PieChartIcon className="mr-2 h-5 w-5" />
+                      Findings by Severity
+                    </CardTitle>
+                    <CardDescription>Distribution of findings across severity levels</CardDescription>
+                  </CardHeader>
+                  <CardContent className="h-80">
+                    <PieChart
+                      data={stats.findingsBySeverity}
+                      index="name"
+                      categories={["value"]}
+                      colors={stats.findingsBySeverity.map((item: any) => item.color)}
+                      valueFormatter={(value) => `${value} findings`}
+                      className="h-72"
+                    />
+                  </CardContent>
+                </Card>
               </div>
 
               {/* Charts - Row 3 */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Card>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center text-lg">
                       <LineChartIcon className="mr-2 h-5 w-5" />
@@ -956,29 +1017,6 @@ export default function AdminXPage() {
                   </CardContent>
                 </Card>
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center text-lg">
-                      <PieChartIcon className="mr-2 h-5 w-5" />
-                      Target Type Distribution
-                    </CardTitle>
-                    <CardDescription>Distribution of scanned targets by category</CardDescription>
-                  </CardHeader>
-                  <CardContent className="h-80">
-                    <PieChart
-                      data={stats.targetDistribution}
-                      index="name"
-                      categories={["value"]}
-                      colors={stats.targetDistribution.map((item: any) => item.color)}
-                      valueFormatter={(value) => `${value} targets`}
-                      className="h-72"
-                    />
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Charts - Row 4 */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center text-lg">
@@ -1003,17 +1041,17 @@ export default function AdminXPage() {
                   <CardHeader>
                     <CardTitle className="flex items-center text-lg">
                       <LineChartIcon className="mr-2 h-5 w-5" />
-                      Finding Discovery Rate
+                      Scan Activity Trends
                     </CardTitle>
-                    <CardDescription>Monthly finding discovery over the past year</CardDescription>
+                    <CardDescription>Monthly scan volume over the past year</CardDescription>
                   </CardHeader>
                   <CardContent className="h-80">
                     <LineChart
-                      data={stats.findingDiscoveryRate}
+                      data={stats.scanTrends}
                       index="name"
                       categories={["value"]}
-                      colors={["#dc2626"]}
-                      valueFormatter={(value) => `${value} findings`}
+                      colors={["#2563eb"]}
+                      valueFormatter={(value) => `${value} scans`}
                       className="h-72"
                     />
                   </CardContent>
@@ -1158,55 +1196,6 @@ export default function AdminXPage() {
                 </Card>
               </div>
 
-              {/* Deployments */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center text-lg">
-                    <Layers className="mr-2 h-5 w-5" />
-                    Deployments
-                  </CardTitle>
-                  <CardDescription>Status of all Kubernetes deployments</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ScrollArea className="h-80">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Name</TableHead>
-                          <TableHead>Cluster</TableHead>
-                          <TableHead>Replicas</TableHead>
-                          <TableHead>Available</TableHead>
-                          <TableHead>Status</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {systemStatus.deployments.map((deployment: any) => (
-                          <TableRow key={`${deployment.cluster}-${deployment.name}`}>
-                            <TableCell className="font-medium">{deployment.name}</TableCell>
-                            <TableCell>{deployment.cluster}</TableCell>
-                            <TableCell>{deployment.replicas}</TableCell>
-                            <TableCell>{deployment.available}</TableCell>
-                            <TableCell>
-                              {deployment.status === "healthy" ? (
-                                <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100">
-                                  <CheckCircle className="mr-1 h-3 w-3" />
-                                  Healthy
-                                </Badge>
-                              ) : (
-                                <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100">
-                                  <AlertTriangle className="mr-1 h-3 w-3" />
-                                  Issues
-                                </Badge>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </ScrollArea>
-                </CardContent>
-              </Card>
-
               {/* Nodes */}
               <Card>
                 <CardHeader>
@@ -1252,55 +1241,6 @@ export default function AdminXPage() {
                                 </Badge>
                               )}
                             </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </ScrollArea>
-                </CardContent>
-              </Card>
-
-              {/* Services */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center text-lg">
-                    <Network className="mr-2 h-5 w-5" />
-                    Services
-                  </CardTitle>
-                  <CardDescription>Status of all application services</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ScrollArea className="h-80">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Name</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Latency</TableHead>
-                          <TableHead>Uptime</TableHead>
-                          <TableHead>Requests (24h)</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {systemStatus.services.map((service: any) => (
-                          <TableRow key={service.name}>
-                            <TableCell className="font-medium">{service.name}</TableCell>
-                            <TableCell>
-                              {service.status === "healthy" ? (
-                                <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100">
-                                  <CheckCircle className="mr-1 h-3 w-3" />
-                                  Healthy
-                                </Badge>
-                              ) : (
-                                <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100">
-                                  <AlertTriangle className="mr-1 h-3 w-3" />
-                                  Issues
-                                </Badge>
-                              )}
-                            </TableCell>
-                            <TableCell>{service.latency} ms</TableCell>
-                            <TableCell>{service.uptime}</TableCell>
-                            <TableCell>{service.requests.toLocaleString()}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>

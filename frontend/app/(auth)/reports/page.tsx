@@ -299,7 +299,7 @@ export default function ReportsPage() {
               disabled={row.status.toUpperCase() !== "GENERATED"}
             >
               <Mail className="mr-2 h-4 w-4" />
-              Email Report
+              Send to email
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={(e) => {
@@ -309,7 +309,7 @@ export default function ReportsPage() {
               className="text-red-600"
             >
               <Trash2 className="mr-2 h-4 w-4" />
-              Delete Report
+              Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

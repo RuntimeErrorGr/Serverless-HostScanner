@@ -512,6 +512,14 @@ def generate_report_task(report_uuid):
             report.status = ReportStatus.FAILED
             db.commit()
             return False
+        
+        # Get the user
+        user = scan.user
+        if not user:
+            log.error(f"No user associated with scan {scan.uuid}")
+            report.status = ReportStatus.FAILED
+            db.commit()
+            return False
             
         # Update report status to generating (we can add this status if needed)
         log.info(f"Generating {report.type.value} report for scan {scan.uuid}")
@@ -547,7 +555,8 @@ def generate_report_task(report_uuid):
             'all_findings': all_findings,
             'detailed_findings': all_findings,  # Could filter for high/critical only
             'findings_by_severity': dict(findings_by_severity),
-            'generation_time': now_utc()
+            'generation_time': now_utc(),
+            'user': user
         }
         
         # Set up Jinja2 environment

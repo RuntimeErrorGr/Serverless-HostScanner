@@ -525,7 +525,7 @@ def generate_report(
         raise HTTPException(status_code=400, detail=f"Invalid report format: {format_str}")
     
     # Create report entry
-    report_name = f"{scan.name}.{format_str.lower()}.{now_utc().strftime('%Y-%m-%d-%H-%M-%S')}"
+    report_name = f"{scan.name}.{now_utc().strftime('%Y-%m-%d-%H-%M-%S')}.{format_str.lower()}"
     new_report = Report(
         name=report_name,
         type=report_type,

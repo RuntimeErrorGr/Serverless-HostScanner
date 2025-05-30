@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Mail, Loader2 } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
-import { formatToBucharestTime } from "@/lib/timezone"
+import { formatToBucharestTime, formatToBucharestTimeSingleLine } from "@/lib/timezone"
 
 interface EmailReportDialogProps {
   isOpen: boolean
@@ -184,7 +184,7 @@ export function EmailReportDialog({ isOpen, onClose, onConfirm, report }: EmailR
             <p className="text-sm text-muted-foreground">
               <strong>Report Details:</strong><br />
               Format: {report?.type?.toUpperCase()}<br />
-              Generated on: {formatToBucharestTime(report?.created_at)}
+              Generated on: {formatToBucharestTimeSingleLine(report?.created_at)}
             </p>
           </div>
         </div>

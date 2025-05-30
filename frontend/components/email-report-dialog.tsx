@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Mail, Loader2 } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
+import { formatToBucharestTime } from "@/lib/timezone"
 
 interface EmailReportDialogProps {
   isOpen: boolean
@@ -119,7 +120,7 @@ export function EmailReportDialog({ isOpen, onClose, onConfirm, report }: EmailR
             Send Report via Email
           </DialogTitle>
           <DialogDescription>
-            Send the "{report?.name}" report to an email address.
+            Send the "{report?.name}" report to someone.
           </DialogDescription>
         </DialogHeader>
 
@@ -183,7 +184,7 @@ export function EmailReportDialog({ isOpen, onClose, onConfirm, report }: EmailR
             <p className="text-sm text-muted-foreground">
               <strong>Report Details:</strong><br />
               Format: {report?.type?.toUpperCase()}<br />
-              Status: {report?.status}
+              Generated on: {formatToBucharestTime(report?.created_at)}
             </p>
           </div>
         </div>

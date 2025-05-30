@@ -25,6 +25,8 @@ def get_reports(user: OIDCUser = Depends(idp.get_current_user()), db: Session = 
     """
     # Get the user from db with the keycloak_uuid
     db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+    if not db_user:
+        raise HTTPException(status_code=403, detail="User not found")
     
     # Get all reports for scans owned by this user
     reports = (
@@ -66,6 +68,8 @@ def get_report(
     """
     # Get the user from db with the keycloak_uuid
     db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+    if not db_user:
+        raise HTTPException(status_code=403, detail="User not found")
     
     # Find the report and check ownership through scan
     report = (
@@ -104,6 +108,8 @@ def download_report(
     """
     # Get the user from db with the keycloak_uuid
     db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+    if not db_user:
+        raise HTTPException(status_code=403, detail="User not found")
     
     # Find the report and check ownership through scan
     report = (
@@ -163,6 +169,8 @@ def delete_report(
     """
     # Get the user from db with the keycloak_uuid
     db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+    if not db_user:
+        raise HTTPException(status_code=403, detail="User not found")
     
     # Find the report and check ownership through scan
     report = (
@@ -202,7 +210,9 @@ def bulk_delete_reports(
     """
     # Get the user from db with the keycloak_uuid
     db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
-
+    if not db_user:
+        raise HTTPException(status_code=403, detail="User not found")
+    
     # Fetch reports
     reports = db.query(Report).filter(Report.uuid.in_(uuids)).all()
 

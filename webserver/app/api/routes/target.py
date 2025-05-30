@@ -28,6 +28,8 @@ def get_targets(user: OIDCUser = Depends(idp.get_current_user()), db: Session = 
     """
     # Get the user from db with the keycloak_uuid
     db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+    if not db_user:
+        raise HTTPException(status_code=403, detail="User not found")
     
     # Get all targets for this user
     targets = db.query(Target).filter_by(user_id=db_user.id).order_by(Target.created_at.desc()).all()
@@ -75,6 +77,8 @@ def get_target(
     """
     # Get the user from db with the keycloak_uuid
     db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+    if not db_user:
+        raise HTTPException(status_code=403, detail="User not found")
     
     # Find the target
     target = db.query(Target).filter_by(uuid=target_uuid).first()
@@ -97,9 +101,14 @@ def get_target(
 @router.get("/{target_uuid}/flag")
 async def get_target_flag(
     target_uuid: str,
-    user: OIDCUser = Depends(idp.get_current_user),
+    user: OIDCUser = Depends(idp.get_current_user()),
     db: Session = Depends(get_db),
 ):
+    # Get the user from db with the keycloak_uuid
+    db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+    if not db_user:
+        raise HTTPException(status_code=403, detail="User not found")
+    
     target = db.query(Target).filter_by(uuid=target_uuid).first()
     if not target:
         raise HTTPException(status_code=404, detail="Target not found")
@@ -141,6 +150,8 @@ def create_target(
     """
     # Get the user from db with the keycloak_uuid
     db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+    if not db_user:
+        raise HTTPException(status_code=403, detail="User not found")
     
     # Check if target with this name already exists for this user
     existing_target = db.query(Target).filter_by(user_id=db_user.id, name=target_data.name).first()
@@ -181,6 +192,8 @@ def update_target(
     """
     # Get the user from db with the keycloak_uuid
     db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+    if not db_user:
+        raise HTTPException(status_code=403, detail="User not found")
     
     # Find the target
     target = db.query(Target).filter_by(uuid=target_uuid).first()
@@ -224,6 +237,8 @@ def delete_target(
     """
     # Get the user from db with the keycloak_uuid
     db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+    if not db_user:
+        raise HTTPException(status_code=403, detail="User not found")
     
     # Find the target
     target = db.query(Target).filter_by(uuid=target_uuid).first()
@@ -248,6 +263,8 @@ def bulk_delete_targets(
     db: Session = Depends(get_db),
 ):
     db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+    if not db_user:
+        raise HTTPException(status_code=403, detail="User not found")
 
     targets = db.query(Target).filter(Target.uuid.in_(uuids)).all()
 

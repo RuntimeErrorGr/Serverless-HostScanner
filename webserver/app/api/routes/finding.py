@@ -23,13 +23,14 @@ def get_findings(user: OIDCUser = Depends(idp.get_current_user()), db: Session =
     """
     # Get the user from db with the keycloak_uuid
     db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+    if not db_user:
+        raise HTTPException(status_code=403, detail="User not found")
     
     # Get all targets for this user
     user_target_ids = [target.id for target in db.query(Target).filter_by(user_id=db_user.id).all()]
     
     # Get all findings for user's targets
     findings = db.query(Finding).filter(Finding.target_id.in_(user_target_ids)).order_by(Finding.created_at.desc()).all()
-    
     # Format findings data for frontend
     findings_list = []
     for finding in findings:
@@ -71,6 +72,8 @@ def get_finding(
     """
     # Get the user from db with the keycloak_uuid
     db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+    if not db_user:
+        raise HTTPException(status_code=403, detail="User not found")
     
     # Find the finding
     finding = db.query(Finding).filter_by(uuid=finding_uuid).first()
@@ -123,16 +126,17 @@ def update_finding(
     """
     # Get the user from db with the keycloak_uuid
     db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
-    
+    if not db_user:
+        raise HTTPException(status_code=403, detail="User not found")
+
     # Find the finding
     finding = db.query(Finding).filter_by(uuid=finding_uuid).first()
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
-    
     # Check if the finding belongs to a target owned by the user
     if finding.target.user_id != db_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to update this finding")
-    
+
     # Update finding fields if provided
     if finding_data.description is not None:
         finding.description = finding_data.description
@@ -143,7 +147,6 @@ def update_finding(
     
     db.commit()
     db.refresh(finding)
-    
     log.info(f"Finding {finding_uuid} updated by user {db_user.id}")
     
     return {
@@ -181,6 +184,8 @@ def delete_finding(
     """
     # Get the user from db with the keycloak_uuid
     db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+    if not db_user:
+        raise HTTPException(status_code=403, detail="User not found")
     
     # Find the finding
     finding = db.query(Finding).filter_by(uuid=finding_uuid).first()
@@ -228,6 +233,8 @@ def get_findings_by_target(
     """
     # Get the user from db with the keycloak_uuid
     db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+    if not db_user:
+        raise HTTPException(status_code=403, detail="User not found")
     
     # Find the target and verify ownership
     target = db.query(Target).filter_by(uuid=target_uuid).first()
@@ -239,6 +246,7 @@ def get_findings_by_target(
     
     # Get all findings for this target
     findings = db.query(Finding).filter_by(target_id=target.id).order_by(Finding.created_at.desc()).all()
+
     
     # Format findings data for frontend
     findings_list = []

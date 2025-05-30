@@ -424,7 +424,6 @@ def get_findings_by_port(
             {
                 "name": f"Port {port}/{protocol}",
                 "value": value,
-                "color": f"#{hash(f'{port}{protocol}') % 16777215:06x}"  # Generate color from hash
             }
             for port, protocol, value in results
         ]
@@ -456,7 +455,6 @@ def get_findings_by_service(
             {
                 "name": service.upper() if service else "UNKNOWN",
                 "value": value,
-                "color": f"#{hash(service) % 16777215:06x}"  # Generate color from hash
             }
             for service, value in results if service
         ]
@@ -572,20 +570,11 @@ def get_findings_by_severity(
             func.count(Finding.id).desc()
         ).all()
 
-        # Define colors for each severity level
-        severity_colors = {
-            "critical": "#dc2626",
-            "high": "#ea580c", 
-            "medium": "#ca8a04",
-            "low": "#2563eb",
-            "info": "#6b7280"
-        }
 
         return [
             {
                 "name": severity.value.title() if severity else "Unknown",
                 "value": value,
-                "color": severity_colors.get(severity.value if severity else "info", "#6b7280")
             }
             for severity, value in results
         ]

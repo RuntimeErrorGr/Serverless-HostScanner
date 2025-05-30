@@ -26,13 +26,13 @@ def get_stats(user: OIDCUser = Depends(idp.get_current_user()), db: Session = De
     - averageScanTime (+delta)
     - activeScans (pending + running)
     '''
-
+    print(user.sub)
     db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
     if not db_user:
         return {
             "totalTargets": 0,
             "averageScansPerTarget": 0,
-            "averageScanTime": "00:00:00",
+            "averageScanTime": "00h:00m:00s",
             "activeScans": 0,
             "pendingScans": 0,
             "runningScans": 0,
@@ -220,7 +220,7 @@ def get_open_ports(user: OIDCUser = Depends(idp.get_current_user()), db: Session
         db.query(Finding.port, Finding.protocol, func.count(Finding.id).label("count"))
         .join(Finding.target)
         .filter(Target.user_id == db_user.id, Finding.port_state == PortState.OPEN)
-        .group_by(Finding.port)
+        .group_by(Finding.port, Finding.protocol)
         .order_by(func.count(Finding.id).desc())
         .all()
     )

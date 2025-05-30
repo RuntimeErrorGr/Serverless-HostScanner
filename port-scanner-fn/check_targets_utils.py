@@ -359,17 +359,17 @@ class Host:
     Class that holds the information of a host in a Nmap scan.
     """
 
-    def __init__(self):
-        self.ip_address = ""
-        self.hostname = ""
-        self.status = ""
-        self.last_seen = ""
-        self.reason = ""
-        self.os_info = {}
-        self.ports = []
-        self.traceroute = []
-        self.ssl_info = {}
-        self.http_headers = {}
+    def __init__(self, ip_address: str = "", hostname: str = "", status: str = "", last_seen: str = "", reason: str = "", os_info: dict = {}, ports: list = [], traceroute: list = [], ssl_info: dict = {}, http_headers: dict = {}):
+        self.ip_address = ip_address
+        self.hostname = hostname
+        self.status = status
+        self.last_seen = last_seen
+        self.reason = reason
+        self.os_info = os_info
+        self.ports = ports
+        self.traceroute = traceroute
+        self.ssl_info = ssl_info
+        self.http_headers = http_headers
 
     def __str__(self):
         return json.dumps(self.__dict__)

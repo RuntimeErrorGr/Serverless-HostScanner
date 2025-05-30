@@ -92,6 +92,8 @@ def clean_target_list(targets):
 def index(user: OIDCUser = Depends(idp.get_current_user()), db: Session = Depends(get_db)):
     # Get the user from db with the keycloak_uuid
     db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+    if not db_user:
+        raise HTTPException(status_code=403, detail="User not found")
     
     # Get all scans for this user
     scans = db.query(Scan).filter_by(user_id=db_user.id).order_by(Scan.created_at.desc()).all()
@@ -307,6 +309,8 @@ def start_scan(
     
     # 2. Get the user from db with the keycloak_uuid
     db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+    if not db_user:
+        raise HTTPException(status_code=403, detail="User not found")
 
     # 3. Create targets if they don't exist
     inserted_targets = get_or_create_targets(targets, db_user, db)
@@ -332,6 +336,8 @@ def get_scan_by_uuid(
 ):
     # Get the user from db with the keycloak_uuid
     db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+    if not db_user:
+        raise HTTPException(status_code=403, detail="User not found")
     
     # Find the scan
     scan = db.query(Scan).filter_by(uuid=scan_uuid).first()
@@ -409,6 +415,8 @@ def get_scan_status(
 ):
     # Get the user from db with the keycloak_uuid
     db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+    if not db_user:
+        raise HTTPException(status_code=403, detail="User not found")
     
     # Find the scan
     scan = db.query(Scan).filter_by(uuid=scan_uuid).first()
@@ -435,6 +443,8 @@ def get_findings_by_scan_uuid(
     """
     # Get the user from db with the keycloak_uuid
     db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+    if not db_user:
+        raise HTTPException(status_code=403, detail="User not found")
     
     # Find the scan
     scan = db.query(Scan).filter_by(uuid=scan_uuid).first()
@@ -491,6 +501,8 @@ def generate_report(
     
     # Get the user from db with the keycloak_uuid
     db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+    if not db_user:
+        raise HTTPException(status_code=403, detail="User not found")
     
     # Find the scan
     scan = db.query(Scan).filter_by(uuid=scan_uuid).first()
@@ -549,6 +561,8 @@ def delete_scan(
     """
     # Get the user from db with the keycloak_uuid
     db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
+    if not db_user:
+        raise HTTPException(status_code=403, detail="User not found")
     
     # Find the scan
     scan = db.query(Scan).filter_by(uuid=scan_uuid).first()
@@ -581,7 +595,9 @@ def bulk_delete_scans(
     """
     # Get the user from db with the keycloak_uuid
     db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
-
+    if not db_user:
+        raise HTTPException(status_code=403, detail="User not found")
+    
     # Fetch all scans to delete
     scans = db.query(Scan).filter(Scan.uuid.in_(uuids)).all()
 
@@ -598,6 +614,9 @@ def bulk_delete_scans(
 
 
 def create_scan_entry(inserted_targets, db_user, payload, db):
+    if not db_user:
+        raise HTTPException(status_code=403, detail="User not found")
+    
     scan_type = payload.get("scan_type", ScanType.DEFAULT)
     scan_options = payload.get("scan_options", {})
     scan_uuid = payload.get("scan_id")
@@ -640,7 +659,7 @@ def start_openfaas_job(payload):
 
     faas_payload = {
         "targets": targets,
-        "scan_type": scan_type.value,
+        "scan_type": scan_type.value if isinstance(scan_type, ScanType) else scan_type,
         "scan_id": scan_uuid,
         "scan_options": scan_options
     }
@@ -688,6 +707,9 @@ def get_or_create_targets(target_names, db_user, db):
     For each target name, get the existing Target for this user or create a new one.
     Returns a list of Target objects.
     """
+    if not db_user:
+        raise HTTPException(status_code=403, detail="User not found")
+    
     # remove duplicates from targets
     target_names = list(set(target_names))
     # remove empty targets

@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ET
 from ipaddress import IPv4Network
 import json
 import redis
-from .check_targets_utils import (
+from check_targets_utils import (
     CheckTargetsConfig,
     ScanType,
     NmapParseException,
@@ -408,10 +408,10 @@ class CheckTargets:
                 broadcast_address,
             )
 
-            if network_address in self.alive_targets:
-                self.alive_targets.remove(network_address)
-            if broadcast_address in self.alive_targets:
-                self.alive_targets.remove(broadcast_address)
+            self.alive_targets = {
+                host for host in self.alive_targets
+                if host.ip_address != network_address and host.ip_address != broadcast_address
+            }
 
     def __write_output(self) -> None:
         """Outputs the scan results in JSON format."""

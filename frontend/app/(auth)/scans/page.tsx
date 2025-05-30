@@ -266,10 +266,11 @@ export default function ScansPage() {
     try {
       await scansAPI.generateReport(selectedScan.uuid, format)
       toast({
-        variant: "success",
-        title: "Report generated",
-        description: `${format.toUpperCase()} report for ${selectedScan.name} has been generated.`,
+        variant: "default",
+        title: "Your report is being generated",
+        description: `Your ${format.toUpperCase()} report is being generated.`,
       })
+      setIsReportDialogOpen(false)
       router.push("/reports")
     } catch (error) {
       console.error("Error generating report:", error)

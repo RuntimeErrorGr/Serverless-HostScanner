@@ -15,7 +15,8 @@ import {
 } from "@/components/ui/pagination"
 import { DeleteReportDialog } from "@/components/delete-report-dialog"
 import { BulkDeleteDialog } from "@/components/bulk-delete-dialog"
-import { MoreHorizontal, Trash2, Download, FileText, Loader2 } from "lucide-react"
+import { EmailReportDialog, EmailData } from "@/components/email-report-dialog"
+import { MoreHorizontal, Trash2, Download, FileText, Loader2, Mail } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
 import { Badge } from "@/components/ui/badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -29,6 +30,7 @@ export default function ReportsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false)
+  const [isEmailDialogOpen, setIsEmailDialogOpen] = useState(false)
   const [selectedReport, setSelectedReport] = useState<any>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
@@ -62,10 +64,7 @@ export default function ReportsPage() {
   const currentReports = reports.slice(startIndex, endIndex)
   const totalPages = Math.ceil(reports.length / itemsPerPage)
 
-  const handleScanClick = (report: any) => {
-    router.push(`/scans/${report.scan_uuid}`)
-  }
-
+ 
   const handleDeleteReport = (report: any) => {
     setSelectedReport(report)
     setIsDeleteDialogOpen(true)
@@ -74,7 +73,7 @@ export default function ReportsPage() {
   const handleDownloadReport = async (report: any) => {
     try {
       const response = await reportsAPI.downloadReport(report.uuid)
-
+      console.log(response.ok)
       if (response.ok) {
         // Create blob from response
         const blob = await response.blob()
@@ -104,6 +103,30 @@ export default function ReportsPage() {
         title: "Error",
         description: "Failed to download report. Please try again.",
       })
+    }
+  }
+
+  const handleEmailReport = (report: any) => {
+    setSelectedReport(report)
+    setIsEmailDialogOpen(true)
+  }
+
+  const confirmEmailReport = async (emailData: EmailData) => {
+    try {
+      await reportsAPI.emailReport(selectedReport.uuid, emailData)
+      toast({
+        variant: "success",
+        title: "Email sent",
+        description: `Report has been sent to ${emailData.to}.`,
+      })
+    } catch (error) {
+      console.error("Error sending email:", error)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to send email. Please try again.",
+      })
+      throw error // Re-throw to prevent dialog from closing
     }
   }
 
@@ -212,11 +235,22 @@ export default function ReportsPage() {
       sortable: true,
       filterable: true,
       render: (row: any) => (
-        <Badge
-          variant={row.status === "GENERATED" ? "default" : row.status === "PENDING" ? "secondary" : "destructive"}
-        >
-          {row.status}
-        </Badge>
+        <div className="flex items-center">
+          <div
+            className={`h-2 w-2 rounded-full mr-2 ${
+              row.status.toLowerCase() === "generated"
+                ? "bg-green-500"
+                : row.status.toLowerCase() === "pending"
+                  ? "bg-blue-500"
+                  : row.status.toLowerCase() === "failed"
+                    ? "bg-yellow-500"
+                    : "bg-red-500"
+            }`}
+          />
+          <span className="capitalize">
+            {row.status.toLowerCase() === "generated" ? "Ready" : row.status.toLowerCase() === "pending" ? "Pending" : row.status.toLowerCase() === "failed" ? "Failed" : "Generating"}
+          </span>
+        </div>
       ),
     },
     {
@@ -252,10 +286,20 @@ export default function ReportsPage() {
                 e.stopPropagation()
                 handleDownloadReport(row)
               }}
-              disabled={row.status !== "GENERATED"}
+              disabled={row.status.toUpperCase() !== "GENERATED"}
             >
               <Download className="mr-2 h-4 w-4" />
               Download
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation()
+                handleEmailReport(row)
+              }}
+              disabled={row.status.toUpperCase() !== "GENERATED"}
+            >
+              <Mail className="mr-2 h-4 w-4" />
+              Email Report
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={(e) => {
@@ -304,7 +348,6 @@ export default function ReportsPage() {
           <DataTable
             data={currentReports}
             columns={columns}
-            onRowClick={handleScanClick}
             emptyState={
               <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
                 <FileText className="h-12 w-12 text-muted-foreground mb-4" />
@@ -383,6 +426,13 @@ export default function ReportsPage() {
         onConfirm={confirmBulkDelete}
         itemType="Report"
         itemCount={selectedReports.length}
+      />
+
+      <EmailReportDialog
+        isOpen={isEmailDialogOpen}
+        onClose={() => setIsEmailDialogOpen(false)}
+        onConfirm={confirmEmailReport}
+        report={selectedReport}
       />
     </div>
   )

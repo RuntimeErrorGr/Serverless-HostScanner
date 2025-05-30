@@ -16,14 +16,22 @@ spec:
         - name: nginx-config
           configMap:
             name: nginx-config
+        - name: reports-storage
+          persistentVolumeClaim:
+            claimName: reports-nfs-pvc
       containers:
         - name: webserver
           image: andrei8080/webserver:latest
           ports:
             - containerPort: 8080
           envFrom:
+            - secretRef:
+                name: smtp-secret
             - configMapRef:
                 name: webserver-config
+          volumeMounts:
+            - name: reports-storage
+              mountPath: /app/reports
 
         - name: frontend
           image: andrei8080/frontend:latest

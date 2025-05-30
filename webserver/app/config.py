@@ -42,6 +42,16 @@ class Settings(BaseSettings):
     OPENFAAS_PORT: int
 
     SCANNER_NAME: str
+    
+    # Reports storage directory
+    REPORTS_DIR: str = "/app/reports"
+    
+    # SMTP configuration
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "localhost")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USER: str = os.getenv("SMTP_USER", "")
+    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+    SMTP_USE_TLS: bool = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
 
     @property
     def FRONTEND_CALLBACK_URI(self):

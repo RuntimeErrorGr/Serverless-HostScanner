@@ -5,6 +5,11 @@ import redis.asyncio as aioredis
 from celery import Celery
 import time
 from datetime import timedelta
+import os
+from collections import defaultdict
+from jinja2 import Environment, FileSystemLoader
+from weasyprint import HTML
+import uuid as uuid_lib
 
 from app.config import settings
 from app.log import get_logger
@@ -12,6 +17,7 @@ from app.database.db import get_db
 from app.models.scan import Scan, ScanStatus
 from app.models.target import Target
 from app.models.finding import Finding, PortState, Severity
+from app.models.report import Report, ReportStatus, ReportType
 from app.utils.timezone import now_utc
 
 
@@ -480,3 +486,139 @@ def watch_scan(scan_uuid):
             r.close()
 
     asyncio.run(async_watch())
+
+
+@celery_app.task
+def generate_report_task(report_uuid):
+    """
+    Generate a report file for a given report UUID.
+    This task handles the actual report generation process.
+    """
+    log.info(f"Starting report generation for report UUID: {report_uuid}")
+    
+    db = next(get_db())
+    
+    try:
+        # Get the report from database
+        report = db.query(Report).filter_by(uuid=report_uuid).first()
+        if not report:
+            log.error(f"Report with UUID {report_uuid} not found")
+            return False
+            
+        # Get the associated scan
+        scan = report.scan
+        if not scan:
+            log.error(f"No scan associated with report {report_uuid}")
+            report.status = ReportStatus.FAILED
+            db.commit()
+            return False
+            
+        # Update report status to generating (we can add this status if needed)
+        log.info(f"Generating {report.type.value} report for scan {scan.uuid}")
+        
+        # Get all targets and findings for this scan
+        targets = list(scan.targets)  # Convert to list to avoid lazy loading issues
+        
+        # Get all findings for all targets in this scan
+        all_findings = []
+        for target in targets:
+            all_findings.extend(target.findings)
+            
+        # Sort findings by severity (critical first)
+        severity_order = {
+            Severity.CRITICAL: 0,
+            Severity.HIGH: 1,
+            Severity.MEDIUM: 2,
+            Severity.LOW: 3,
+            Severity.INFO: 4
+        }
+        all_findings.sort(key=lambda f: severity_order.get(f.severity, 5))
+        
+        # Count findings by severity
+        findings_by_severity = defaultdict(int)
+        for finding in all_findings:
+            if finding.severity:
+                findings_by_severity[finding.severity.value] += 1
+                
+        # Prepare template data
+        template_data = {
+            'scan': scan,
+            'targets': targets,
+            'all_findings': all_findings,
+            'detailed_findings': all_findings,  # Could filter for high/critical only
+            'findings_by_severity': dict(findings_by_severity),
+            'generation_time': now_utc()
+        }
+        
+        # Set up Jinja2 environment
+        template_dir = os.path.join(os.path.dirname(__file__), 'templates')
+        jinja_env = Environment(loader=FileSystemLoader(template_dir))
+        
+        # Ensure reports directory exists
+        reports_dir = settings.REPORTS_DIR
+        os.makedirs(reports_dir, exist_ok=True)
+        
+        # Generate filename
+        safe_scan_name = "".join(c for c in scan.name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+        safe_scan_name = safe_scan_name.replace(' ', '_')
+        timestamp = now_utc().strftime('%Y%m%d_%H%M%S')
+        
+        if report.type == ReportType.PDF:
+            # Generate HTML first, then convert to PDF
+            template = jinja_env.get_template('report_base.html')
+            html_content = template.render(**template_data)
+            
+            filename = f"{safe_scan_name}_{timestamp}.pdf"
+            file_path = os.path.join(reports_dir, filename)
+            
+            # Convert HTML to PDF using WeasyPrint
+            HTML(string=html_content).write_pdf(file_path)
+            
+        elif report.type == ReportType.JSON:
+            template = jinja_env.get_template('report_json.j2')
+            json_content = template.render(**template_data)
+            
+            filename = f"{safe_scan_name}_{timestamp}.json"
+            file_path = os.path.join(reports_dir, filename)
+            
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(json_content)
+                
+        elif report.type == ReportType.CSV:
+            template = jinja_env.get_template('report_csv.j2')
+            csv_content = template.render(**template_data)
+            
+            filename = f"{safe_scan_name}_{timestamp}.csv"
+            file_path = os.path.join(reports_dir, filename)
+            
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(csv_content)
+                
+        else:
+            log.error(f"Unsupported report type: {report.type}")
+            report.status = ReportStatus.FAILED
+            db.commit()
+            return False
+            
+        # Update report with file path and mark as generated
+        report.url = file_path
+        report.status = ReportStatus.GENERATED
+        db.commit()
+        
+        log.info(f"Report generation completed for {report_uuid}. File saved to: {file_path}")
+        return True
+        
+    except Exception as e:
+        log.error(f"Error generating report {report_uuid}: {str(e)}")
+        # Update report status to failed
+        try:
+            report = db.query(Report).filter_by(uuid=report_uuid).first()
+            if report:
+                report.status = ReportStatus.FAILED
+                db.commit()
+        except Exception as db_error:
+            log.error(f"Error updating report status to failed: {str(db_error)}")
+        return False
+        
+    finally:
+        db.close()

@@ -17,10 +17,20 @@ ENV PYTHONUNBUFFERED=1 \
 ENV PATH="$POETRY_HOME/bin:$VENV_PATH/bin:$PATH"
 
 FROM python-base as builder-base
-RUN apt-get update \
-    && apt-get install --no-install-recommends -y \
-        curl \
-        build-essential
+RUN apt-get update && apt-get install --no-install-recommends -y \
+curl \
+build-essential \
+libpango-1.0-0 \
+libpangocairo-1.0-0 \
+libcairo2 \
+libgdk-pixbuf2.0-0 \
+libffi-dev \
+libglib2.0-0 \
+shared-mime-info \
+fonts-liberation \
+fonts-dejavu-core \
+&& apt-get clean \
+&& rm -rf /var/lib/apt/lists/*
 
 RUN --mount=type=cache,target=/root/.cache \
     curl -sSL https://install.python-poetry.org | python3 -
@@ -52,6 +62,22 @@ CMD ["python", "-m", "app.server"]
 
 FROM python-base as production
 ENV ENV=prod
+
+RUN apt-get update && apt-get install --no-install-recommends -y \
+    curl \
+    build-essential \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libcairo2 \
+    libgdk-pixbuf2.0-0 \
+    libffi-dev \
+    libglib2.0-0 \
+    shared-mime-info \
+    fonts-liberation \
+    fonts-dejavu-core \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
+
 COPY --from=builder-base $POETRY_HOME $POETRY_HOME
 COPY --from=builder-base $PYSETUP_PATH $PYSETUP_PATH
 COPY . /app

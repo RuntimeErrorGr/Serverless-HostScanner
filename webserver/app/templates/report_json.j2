@@ -1,0 +1,74 @@
+{
+    "report_metadata": {
+        "generated_at": "{{ generation_time.isoformat() }}",
+        "format": "json",
+        "version": "1.0"
+    },
+    "scan": {
+        "uuid": "{{ scan.uuid }}",
+        "name": "{{ scan.name }}",
+        "type": "{{ scan.type.value if scan.type else null }}",
+        "status": "{{ scan.status.value if scan.status else null }}",
+        "created_at": "{{ scan.created_at.isoformat() if scan.created_at else null }}",
+        "started_at": "{{ scan.started_at.isoformat() if scan.started_at else null }}",
+        "finished_at": "{{ scan.finished_at.isoformat() if scan.finished_at else null }}",
+        "parameters": {{ scan.parameters | tojson if scan.parameters else "null" }}
+    },
+    "summary": {
+        "total_targets": {{ targets | length }},
+        "total_findings": {{ all_findings | length }},
+        "findings_by_severity": {{ findings_by_severity | tojson }}
+    },
+    "targets": [
+        {% for target in targets %}
+        {
+            "uuid": "{{ target.uuid }}",
+            "name": "{{ target.name }}",
+            "created_at": "{{ target.created_at.isoformat() if target.created_at else null }}",
+            "findings_count": {{ target.findings | length }},
+            "findings": [
+                {% for finding in target.findings %}
+                {
+                    "uuid": "{{ finding.uuid }}",
+                    "name": "{{ finding.name }}",
+                    "description": "{{ finding.description | replace('\n', '\\n') | replace('"', '\\"') if finding.description else null }}",
+                    "evidence": "{{ finding.evidence | replace('\n', '\\n') | replace('"', '\\"') if finding.evidence else null }}",
+                    "recommendation": "{{ finding.recommendation | replace('\n', '\\n') | replace('"', '\\"') if finding.recommendation else null }}",
+                    "port": {{ finding.port if finding.port else "null" }},
+                    "port_state": "{{ finding.port_state.value if finding.port_state else null }}",
+                    "protocol": "{{ finding.protocol if finding.protocol else null }}",
+                    "service": "{{ finding.service if finding.service else null }}",
+                    "severity": "{{ finding.severity.value if finding.severity else null }}",
+                    "os": {{ finding.os | tojson if finding.os else "null" }},
+                    "traceroute": {{ finding.traceroute | tojson if finding.traceroute else "null" }},
+                    "created_at": "{{ finding.created_at.isoformat() if finding.created_at else null }}"
+                }{% if not loop.last %},{% endif %}
+                {% endfor %}
+            ]
+        }{% if not loop.last %},{% endif %}
+        {% endfor %}
+    ],
+    "detailed_findings": [
+        {% for finding in detailed_findings %}
+        {
+            "uuid": "{{ finding.uuid }}",
+            "name": "{{ finding.name }}",
+            "description": "{{ finding.description | replace('\n', '\\n') | replace('"', '\\"') if finding.description else null }}",
+            "evidence": "{{ finding.evidence | replace('\n', '\\n') | replace('"', '\\"') if finding.evidence else null }}",
+            "recommendation": "{{ finding.recommendation | replace('\n', '\\n') | replace('"', '\\"') if finding.recommendation else null }}",
+            "port": {{ finding.port if finding.port else "null" }},
+            "port_state": "{{ finding.port_state.value if finding.port_state else null }}",
+            "protocol": "{{ finding.protocol if finding.protocol else null }}",
+            "service": "{{ finding.service if finding.service else null }}",
+            "severity": "{{ finding.severity.value if finding.severity else null }}",
+            "os": {{ finding.os | tojson if finding.os else "null" }},
+            "traceroute": {{ finding.traceroute | tojson if finding.traceroute else "null" }},
+            "target": {
+                "uuid": "{{ finding.target.uuid if finding.target else null }}",
+                "name": "{{ finding.target.name if finding.target else null }}"
+            },
+            "created_at": "{{ finding.created_at.isoformat() if finding.created_at else null }}"
+        }{% if not loop.last %},{% endif %}
+        {% endfor %}
+    ]
+} 

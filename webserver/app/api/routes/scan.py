@@ -20,9 +20,10 @@ from app.database.db import get_db
 from app.models.target import Target
 from app.models.scan import Scan, ScanStatus, ScanType
 from app.models.user import User
-from app.tasks import watch_scan
+from app.tasks import watch_scan, generate_report_task
 from app.models.finding import Finding
-
+from app.models.report import Report, ReportType, ReportStatus
+from app.utils.timezone import now_utc
 
 router = APIRouter()
 
@@ -497,7 +498,6 @@ def generate_report(
     """
     Generate a report for a specific scan.
     """
-    from app.models.report import Report, ReportType, ReportStatus
     
     # Get the user from db with the keycloak_uuid
     db_user = db.query(User).filter_by(keycloak_uuid=user.sub).first()
@@ -525,7 +525,7 @@ def generate_report(
         raise HTTPException(status_code=400, detail=f"Invalid report format: {format_str}")
     
     # Create report entry
-    report_name = f"{scan.name} - {format_str.upper()} Report"
+    report_name = f"{scan.name}.{format_str.lower()}.{now_utc().strftime('%Y-%m-%d-%H-%M-%S')}"
     new_report = Report(
         name=report_name,
         type=report_type,
@@ -537,16 +537,25 @@ def generate_report(
     db.commit()
     db.refresh(new_report)
     
-    # TODO: Trigger report generation task (e.g., Celery task)
-    # For now, we'll just mark it as generated
-    # In a real implementation, you would trigger an async task here
+    # Trigger Celery task for report generation
+    try:
+        task = generate_report_task.delay(new_report.uuid)
+        log.info(f"Report generation task {task.id} started for report {new_report.uuid}")
+    except Exception as e:
+        log.error(f"Failed to start report generation task: {str(e)}")
+        # Update report status to failed if task couldn't be started
+        new_report.status = ReportStatus.FAILED
+        db.commit()
+        raise HTTPException(status_code=500, detail="Failed to start report generation")
     
     log.info(f"Report generation requested for scan {scan_uuid} by user {db_user.id}")
     
     return {
         "message": "Report generation started",
         "report_id": new_report.id,
-        "format": format_str
+        "report_uuid": new_report.uuid,
+        "format": format_str,
+        "status": new_report.status.value
     }
 
 

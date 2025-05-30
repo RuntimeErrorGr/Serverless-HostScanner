@@ -147,6 +147,11 @@ export const reportsAPI = {
       body: JSON.stringify(uuids),
     }),
   downloadReport: (uuid: string) => fetchAPI(`/reports/${uuid}/download`),
+  emailReport: (uuid: string, emailData: { to: string; subject: string; message: string }) =>
+    fetchAPI(`/reports/${uuid}/email`, {
+      method: "POST",
+      body: JSON.stringify(emailData),
+    }),
 }
 
 // Findings API

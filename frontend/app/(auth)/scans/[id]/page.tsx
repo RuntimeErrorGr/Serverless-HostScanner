@@ -240,14 +240,24 @@ export default function FinishedScanPage() {
     fetchScanData()
   }, [scanId])
 
-  const handleGenerateReport = (format: string) => {
-    // API call would go here
-    toast({
-      variant: "success",
-      title: "Report generated",
-      description: `${format.toUpperCase()} report has been generated.`,
-    })
-    setIsReportDialogOpen(false)
+  const handleGenerateReport = async (format: string) => {
+    try {
+      await scansAPI.generateReport(scanId, format)
+      toast({
+        variant: "default",
+        title: "Your report is being generated",
+        description: `Your ${format.toUpperCase()} report is being generated.`,
+      })
+      setIsReportDialogOpen(false)
+      router.push("/reports")
+    } catch (error) {
+      console.error("Error generating report:", error)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to generate report. Please try again.",
+      })
+    }
   }
 
   const handleDeleteScan = async () => {

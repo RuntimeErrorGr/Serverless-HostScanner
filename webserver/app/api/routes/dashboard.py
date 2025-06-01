@@ -222,6 +222,7 @@ def get_open_ports(user: OIDCUser = Depends(idp.get_current_user()), db: Session
         .filter(Target.user_id == db_user.id, Finding.port_state == PortState.OPEN)
         .group_by(Finding.port, Finding.protocol)
         .order_by(func.count(Finding.id).desc())
+        .limit(6)
         .all()
     )
 
@@ -254,6 +255,7 @@ def get_services(user: OIDCUser = Depends(idp.get_current_user()), db: Session =
         .filter(Target.user_id == db_user.id)
         .group_by(Finding.service)
         .order_by(func.count(Finding.id).desc())
+        .limit(6)
         .all()
     )
 

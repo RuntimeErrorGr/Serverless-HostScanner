@@ -4,12 +4,12 @@ import asyncio
 import redis.asyncio as aioredis
 from celery import Celery
 import time
-from datetime import timedelta
 import os
 from collections import defaultdict
 from jinja2 import Environment, FileSystemLoader
 from weasyprint import HTML
 import uuid as uuid_lib
+from datetime import datetime
 
 from app.config import settings
 from app.log import get_logger
@@ -29,7 +29,12 @@ celery_app = Celery(
 
 log = get_logger(__name__)
 
-# --- Scan Status Updater ---
+def format_duration(seconds):
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    secs = seconds % 60
+    return f"{hours:02}h:{minutes:02}m:{secs:02}s"
+
 def update_scan_status(scan_uuid, status, db):
     """
     Update the scan status in the database
@@ -72,46 +77,30 @@ PORT_RULES = {
     23: (Severity.HIGH, "Telnet open: credentials are sent in cleartext; disable Telnet and use SSH."),
     21: (Severity.MEDIUM, "FTP open: unencrypted data flow; disable anonymous login or switch to SFTP/FTPS."),
     80: (Severity.LOW, "HTTP open: traffic is unencrypted; redirect HTTP to HTTPS and implement HSTS."),
-    443: (Severity.LOW, "HTTPS open: ensure certificates are valid, use TLS1.2+ and strong cipher suites."),
-    25: (Severity.MEDIUM, "SMTP open: verify no open relay, enforce authentication and restrict relay hosts."),
-    3389: (Severity.HIGH, "RDP open: potential lateral movement; restrict source IPs, enforce MFA and network-level auth."),
-    445: (Severity.MEDIUM, "SMBv1 open: vulnerable to multiple RCE exploits (e.g. EternalBlue); disable SMBv1 and apply security patches."),
-    139: (Severity.MEDIUM, "NetBIOS is open; disable NetBIOS and use SMBv3."),
-    135: (Severity.MEDIUM, "RPC is open; disable RPC and use SMBv3."),
-    111: (Severity.MEDIUM, "RPC is open; disable RPC and use SMBv3."),
-    110: (Severity.MEDIUM, "POP3 is open; disable POP3 and use IMAP."),
-    143: (Severity.MEDIUM, "IMAP is open; disable IMAP and use POP3."),
-    993: (Severity.MEDIUM, "IMAP is open; disable IMAP and use POP3."),
-    995: (Severity.MEDIUM, "POP3 is open; disable POP3 and use IMAP."),
-    587: (Severity.MEDIUM, "SMTP is open; disable SMTP and use SMTP over TLS."),
-    465: (Severity.MEDIUM, "SMTP is open; disable SMTP and use SMTP over TLS."),
-    563: (Severity.MEDIUM, "NNTP is open; disable NNTP and use NNTP over TLS."),
+    443: (Severity.INFO, "HTTPS open: ensure certificates are valid, use TLS1.2+ and strong cipher suites."),
+    25: (Severity.INFO, "SMTP open: verify no open relay, enforce authentication and restrict relay hosts."),
+    3389: (Severity.INFO, "RDP open: potential lateral movement; restrict source IPs, enforce MFA and network-level auth."),
+    445: (Severity.INFO, "SMBv1 open: vulnerable to multiple RCE exploits (e.g. EternalBlue); disable SMBv1 and apply security patches."),
+    110: (Severity.INFO, "POP3 is open; disable POP3 and use IMAP."),
+    143: (Severity.INFO, "IMAP is open; disable IMAP and use POP3."),
+    993: (Severity.INFO, "IMAP is open; disable IMAP and use POP3."),
+    995: (Severity.INFO, "POP3 is open; disable POP3 and use IMAP."),
+    587: (Severity.INFO, "SMTP is open; disable SMTP and use SMTP over TLS."),
+    465: (Severity.INFO, "SMTP is open; disable SMTP and use SMTP over TLS."),
+    563: (Severity.INFO, "NNTP is open; disable NNTP and use NNTP over TLS."),
+    3306: (Severity.LOW, "MySQL open: ensure strong credentials, enforce SSL connections, and restrict access."),
+    5432: (Severity.INFO, "PostgreSQL open: ensure strong credentials, enforce SSL connections, and restrict access."),
+    5900: (Severity.INFO, "VNC open: potential lateral movement; restrict source IPs, enforce MFA and network-level auth."),
+    6379: (Severity.LOW, "Redis open: ensure strong credentials, enforce SSL connections, and restrict access."),
+    8080: (Severity.LOW, "HTTP is open; disable HTTP and use HTTPS."),
+    8443: (Severity.INFO, "HTTPS is open; disable HTTPS and use HTTP."),
 }
 
 SCRIPT_RULES = {
-    # SSL-related scripts
-    'ssl-cert': None,  # parsed by classify_script for expiration and validity
-    'ssl-poodle': (Severity.CRITICAL, "Vulnerable to POODLE (CVE-2014-3566): disable SSLv3, enforce TLS1.2+ and remove RC4 ciphers."),
-    'ssl-enum-ciphers': None,  # handled by classify_script for weak ciphers
-    'ssl-heartbleed': (Severity.HIGH, "Vulnerable to Heartbleed (CVE-2014-0160): upgrade OpenSSL to a non-vulnerable version."),
-    'mysql-vuln-cve2012-2122': (Severity.CRITICAL, "MySQL vulnerable to CVE-2012-2122: patch or upgrade MySQL, restrict remote access and enforce strong credentials."),
     'ssh-publickey-acceptance': (Severity.HIGH, "SSH public key acceptance: verify authorized_keys policies, remove unrecognized keys, and rotate keys regularly."),
-    'xmpp-brute': (Severity.HIGH, "XMPP brute-force susceptible: implement account lockouts, enforce strong password policies, and enable rate limiting."),
-
-    # HTTP-related scripts
     'http-headers': (Severity.LOW, "Review and enforce security headers (CSP, X-Frame-Options, HSTS, X-Content-Type-Options) to harden web responses."),
-    'http-phpself-xss': (Severity.CRITICAL, "PHP self-XSS vulnerability: sanitize input data, validate user input, and implement proper escaping."),
-    'http-xssed': (Severity.CRITICAL, "XSS vulnerability: sanitize input data, validate user input, and implement proper escaping."),
-    'http-csrf': (Severity.HIGH, "Missing CSRF protection: implement anti-CSRF tokens, enforce SameSite cookie attributes, and validate origin headers."),
-    'samba-vuln-cve-2012-1182': (Severity.HIGH, "Samba vulnerable to CVE-2012-1182: update Samba to a patched version, disable anonymous shares, and restrict SMB access."),
-    'http-frontpage-login': (Severity.MEDIUM, "FrontPage services exposed: disable FrontPage extensions or secure with authentication and remove legacy code."),
-    'http-wordpress-brute': (Severity.MEDIUM, "WordPress brute-force detected: enforce strong admin credentials, implement login throttling, and use a web application firewall (WAF)."),
-    'http-vuln-cve2010-2861': (Severity.HIGH, "Vulnerable to CVE-2010-2861: patch the affected HTTP service or upgrade to a secure software version."),
-    'http-shellshock': (Severity.CRITICAL, "Vulnerable to Shellshock (CVE-2014-6271): update Bash to a patched version and reload all shell services."),
-    'http-sql-injection': None,
     'http-title': (Severity.INFO, "Page titles exposed: remove default or sensitive information from HTTP title tags."),
     'http-server-header': (Severity.INFO, "Server header disclosure: remove or obfuscate server version to reduce fingerprinting risk."),
-    'auth-spoof': (Severity.HIGH, "Authentication spoofing possible: verify authentication flows, use CSRF tokens, and enforce secure cookies."),
 }
 
 # --- Utility Functions ---
@@ -120,75 +109,148 @@ def classify_port(p_info):
     state = (p_info.get('state') or 'unknown').lower()
     if state != "open":
         return None
-    return PORT_RULES.get(port, (Severity.LOW, f"Service {p_info.get('service', {}).get('name', '')}/{port} open; review necessity and patch."))
+    return PORT_RULES.get(port, (Severity.INFO, f"Service {p_info.get('service', {}).get('name', '')}/{port} open; review necessity and patch."))
 
 
 def classify_script(script):
-    """Return (severity, recommendation) for an NSE script output dict, parsing SSL cert dates robustly."""
-    from datetime import datetime
     name = script.get('id')
-    output = script.get('output', '')
-    # Predefined rules
+    log.info(f"Classifying script {name}")
+    output = script.get('output', '').lower()
+    results = []
+
+    # --- Predefined Rules ---
     rule = SCRIPT_RULES.get(name)
     if rule:
-        return rule
+        return [rule]
 
-    # SSL certificate handling
+    # --- SSL Certificate Check ---
     if name == 'ssl-cert':
         not_valid_before = None
         not_valid_after = None
-        for line in output.splitlines():
-            if 'Not valid before:' in line:
-                val = line.split('Not valid before:')[1].strip()
-                not_valid_before = val
-            if 'Not valid after:' in line:
-                val = line.split('Not valid after:')[1].strip()
-                not_valid_after = val
-        # Normalize timestamp formats
+        for line in script.get('output', '').splitlines():
+            if 'not valid before:' in line.lower():
+                not_valid_before = line.split('Not valid before:')[1].strip()
+            if 'not valid after:' in line.lower():
+                not_valid_after = line.split('Not valid after:')[1].strip()
+
         def normalize(ts):
-            # if missing seconds, add ':00'
             if ts and len(ts.split('T')[-1].split(':')) == 2:
                 return ts + ':00'
             return ts
+
         try:
             if not_valid_before:
                 not_valid_before = datetime.fromisoformat(normalize(not_valid_before))
             if not_valid_after:
                 not_valid_after = datetime.fromisoformat(normalize(not_valid_after))
         except ValueError:
-            # unable to parse, fallback to info
-            return Severity.INFO, "SSL certificate validity could not be parsed; review manually."
+            return [(Severity.INFO, "SSL certificate validity could not be parsed; review manually.")]
+
         now = datetime.utcnow()
         if not_valid_before and not_valid_after:
             if not_valid_before <= now <= not_valid_after:
-                return Severity.INFO, "SSL certificate is valid; ensure strong signature and key size."
-            if not_valid_after - now < timedelta(days=30):
-                return Severity.MEDIUM, "SSL certificate is expiring soon; renew the certificate."
-            return Severity.HIGH, "SSL certificate is expired; renew the certificate."
-        return Severity.INFO, "SSL certificate details incomplete; review manually."
+                days_left = (not_valid_after - now).days
+                if days_left < 30:
+                    return [(Severity.MEDIUM, f"SSL certificate expires in {days_left} days; renew it to avoid disruption.")]
+                return [(Severity.INFO, "SSL certificate is valid; ensure strong signature algorithm and key size.")]
+            else:
+                expired_days = (now - not_valid_after).days
+                return [(Severity.HIGH, f"SSL certificate expired {expired_days} days ago; renew immediately.")]
+        return [(Severity.INFO, "SSL certificate parsed, but validity could not be confirmed.")]
 
-    # SSL cipher enumeration
+    # --- SSL Cipher Strength ---
     if name == 'ssl-enum-ciphers':
-        if any(tag in output.lower() for tag in ('rc4', '3des', 'md5')):
-            return Severity.MEDIUM, "Disable weak TLS ciphers (RC4, 3DES, MD5)."
-        return Severity.INFO, "Cipher suite is strong. No action is required."
-    
-    if name == 'http-sql-injection':
-        for line in output.splitlines():
-            if "vulnerable" in line.lower():
-                return Severity.CRITICAL, "SQL injection vulnerability: sanitize and parameterize inputs, use prepared statements, and deploy WAF rules."
-            if "possible" in line.lower():
-                return Severity.HIGH, "SQL injection vulnerability: possible vulnerability found."
-        return Severity.HIGH, "SQL injection vulnerability: no vulnerability found."
+        sweet32_found = any(cipher in output for cipher in ['3des', 'des', 'des40', 'rc2']) and 'sweet32' in output
+        rc4_found = 'rc4' in output
+        export_found = 'export' in output
+        md5_found = 'md5' in output
+        sslv3_or_tls10 = 'sslv3:' in output or 'tlsv1.0:' in output
 
-    # Default informational
-    return Severity.INFO, f"Script {name} ran; review output. No action is required."
+        if sweet32_found:
+            results.append((Severity.CRITICAL, "Host is vulnerable to SWEET32 (CVE-2016-2183): 64-bit block ciphers like 3DES and DES used. Disable these ciphers and enforce TLS 1.2+ with modern ciphers."))
+
+        if rc4_found:
+            results.append((Severity.HIGH, "RC4 cipher is present: it is deprecated and insecure. Disable RC4 and use modern ciphers like AES-GCM."))
+
+        if md5_found:
+            results.append((Severity.HIGH, "MD5 used in cipher suite: MD5 is broken and should not be used. Use SHA-2 or better."))
+
+        if export_found:
+            results.append((Severity.HIGH, "Export-grade ciphers detected: these are extremely weak and should be disabled."))
+
+        if sslv3_or_tls10:
+            results.append((Severity.HIGH, "Deprecated SSL/TLS protocols (SSLv3 or TLS 1.0) supported. Disable older protocols and enforce TLS 1.2 or newer."))
+
+        if not results:
+            return [(Severity.INFO, "Cipher suite appears strong. No action is required.")]
+        return results
+
+    if name == 'ssl-poodle':
+        if 'vulnerable' in output:
+            return [(Severity.CRITICAL, "Vulnerable to POODLE (CVE-2014-3566): disable SSLv3, enforce TLS1.2+ and remove RC4 ciphers.")]
+        return [(Severity.INFO, "No POODLE vulnerabilities found. TLS configuration is strong.")]
+
+    if name == 'ssl-heartbleed':
+        if 'vulnerable' in output:
+            return [(Severity.CRITICAL, "Vulnerable to Heartbleed (CVE-2014-0160): upgrade OpenSSL to a non-vulnerable version.")]
+        return [(Severity.INFO, "No Heartbleed vulnerabilities found. TLS configuration is strong.")]
+
+    if name == 'ssl-dh-params':
+        if 'logjam' in output or 'dhe_export' in output or 'modulus length: 512' in output:
+            results.append((Severity.CRITICAL, "Vulnerable to Logjam (CVE-2015-4000): TLS supports EXPORT-grade Diffie-Hellman with 512-bit keys. Disable DHE_EXPORT ciphers or configure DH params with 2048-bit or stronger primes. See: https://weakdh.org"))
+        if 'modulus length: 1024' in output or 'weak dh group' in output:
+            results.append((Severity.HIGH, "TLS uses a Diffie-Hellman group with only 1024-bit strength, which is considered weak. Upgrade to at least 2048-bit DH groups to prevent passive eavesdropping attacks. See: https://weakdh.org"))
+        if not results:
+            results.append((Severity.INFO, "No Diffie-Hellman group vulnerabilities detected."))
+        return results
+
+    if name == "http-enum":
+        if 'admin folder' in output:
+            results.append((Severity.LOW, "Admin folder found; review access controls and authentication."))
+        if 'backup folder' in output:
+            results.append((Severity.LOW, "Backup folder found; review access controls and authentication."))
+        if 'config folder' in output:
+            results.append((Severity.LOW, "Config folder found; review access controls and authentication."))
+        if 'interesting folder' in output:
+            results.append((Severity.LOW, "Interesting folder found; review access controls and authentication."))
+        if not results:
+            results.append((Severity.INFO, "No admin folder found. No action required."))
+        return results
+
+    if name == 'http-sql-injection':
+        if "vulnerable" in output:
+            return [(Severity.CRITICAL, "SQL injection vulnerability: sanitize inputs, use prepared statements, and apply WAF rules.")]
+        if "possible" in output:
+            return [(Severity.HIGH, "Possible SQL injection detected: manually verify and harden input validation.")]
+        return [(Severity.INFO, "No SQL injection vulnerabilities found. Review input sanitization policies.")]
+    
+    if name == 'http-rfi-spider':
+        if "possible" in output:
+            return [(Severity.CRITICAL, "Possible RFI detected: manually verify and harden input validation.")]
+        return [(Severity.INFO, "No RFI vulnerabilities found. Review input sanitization policies.")]
+
+    if name in ['http-stored-xss', 'http-dombased-xss', 'http-xssed', 'http-csrf']:
+        if any(msg in output for msg in [
+            "couldn't find", 
+            "no previously reported", 
+            "no csrf vulnerabilities", 
+            "no vulnerabilities"
+        ]):
+            return [(Severity.INFO, f"No {name.replace('http-', '').replace('-', ' ').upper()} vulnerabilities found. No action required.")]
+        return [(Severity.HIGH, f"{name.replace('http-', '').replace('-', ' ').upper()} vulnerability detected: sanitize user input and apply secure coding best practices.")]
+
+    if name == 'http-title' and '403 forbidden' in output:
+        return [(Severity.INFO, "HTTP page returned 403 Forbidden; access is restricted. No vulnerability detected.")]
+
+    # --- Fallback Rule ---
+    return [(Severity.INFO, f"Script '{name}' executed. Review output for details.")]
+
 
 
 def classify_os(os_info):
     name = os_info.get('name', '')
     if any(x in name.lower() for x in ('xp', '2003', 'centos 5', 'debian 7')):
-        return Severity.HIGH, f"Detected outdated OS {name}; upgrade or patch."
+        return Severity.LOW, f"Detected outdated OS {name}; upgrade or patch."
     return Severity.INFO, "This is just an informational finding. No action is required."
 
 
@@ -323,32 +385,33 @@ def process_scan_results(scan, scan_results, db):
                     output = script_data.get('output', '')
                 else:
                     output = str(script_data)
-                sev_s, reco_s = classify_script({'id': script_name, 'output': output})
-                finding_name = f"{name}:{port_num} script {script_name}"
-                # Check for duplicate script finding
-                existing_finding = db.query(Finding).filter_by(
-                    target_id=target.id,
-                    name=finding_name,
-                    port=port_num,
-                    protocol=p.get('protocol'),
-                    severity=sev_s
-                ).first()
-                if not existing_finding:
-                    db.add(Finding(
+                classify_results = classify_script({'id': script_name, 'output': output})
+                for sev_s, reco_s in classify_results:
+                    finding_name = f"{name}:{port_num} script {script_name}"
+                    # Check for duplicate script finding
+                    existing_finding = db.query(Finding).filter_by(
+                        target_id=target.id,
                         name=finding_name,
-                        description=f"Script {script_name} ran successfully.",
-                        evidence=output,
-                        recommendation=reco_s,
                         port=port_num,
-                        port_state=PortState(state),
                         protocol=p.get('protocol'),
-                        service=p.get('service', {}).get('name', ''),
-                        os=None,
-                        traceroute=None,
-                        severity=sev_s,
-                        target=target
-                    ))
-                    new_count += 1
+                        severity=sev_s
+                    ).first()
+                    if not existing_finding:
+                        db.add(Finding(
+                            name=finding_name,
+                            description=f"Script {script_name} ran successfully.",
+                            evidence=output,
+                            recommendation=reco_s,
+                            port=port_num,
+                            port_state=PortState(state),
+                            protocol=p.get('protocol'),
+                            service=p.get('service', {}).get('name', ''),
+                            os=None,
+                            traceroute=None,
+                            severity=sev_s,
+                            target=target
+                        ))
+                        new_count += 1
     db.commit()
     log.info(f"Inserted {new_count} new findings for scan {scan.uuid}")
 
@@ -513,6 +576,12 @@ def generate_report_task(report_uuid):
             db.commit()
             return False
         
+        if scan.started_at and scan.finished_at:
+            duration_seconds = int((scan.finished_at - scan.started_at).total_seconds())
+            duration_formatted = format_duration(duration_seconds)
+        else:
+            duration_formatted = "N/A"
+        
         # Get the user
         user = scan.user
         if not user:
@@ -551,6 +620,7 @@ def generate_report_task(report_uuid):
         # Prepare template data
         template_data = {
             'scan': scan,
+            'duration': duration_formatted,
             'targets': targets,
             'all_findings': all_findings,
             'detailed_findings': all_findings,  # Could filter for high/critical only

@@ -254,19 +254,24 @@ export default function UserDetailPage() {
       sortable: true,
       filterable: true,
       filterType: "text" as const,
-      render: (report: any) => {
-        const statusColors = {
-          completed: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100",
-          generating: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100",
-          failed: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100",
-          pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-100",
-        }
-        return (
-          <Badge className={statusColors[report.status as keyof typeof statusColors] || "bg-gray-100 text-gray-800"}>
-            {report.status}
-          </Badge>
-        )
-      },
+      render: (row: any) => (
+        <div className="flex items-center">
+          <div
+            className={`h-2 w-2 rounded-full mr-2 ${
+              row.status.toLowerCase() === "generated"
+                ? "bg-green-500"
+                : row.status.toLowerCase() === "pending"
+                  ? "bg-blue-500"
+                  : row.status.toLowerCase() === "failed"
+                    ? "bg-yellow-500"
+                    : "bg-red-500"
+            }`}
+          />
+          <span className="capitalize">
+            {row.status.toLowerCase() === "generated" ? "Ready" : row.status.toLowerCase() === "pending" ? "Pending" : row.status.toLowerCase() === "failed" ? "Failed" : "Generating"}
+          </span>
+        </div>
+      ),
     },
     {
       key: "created_at",

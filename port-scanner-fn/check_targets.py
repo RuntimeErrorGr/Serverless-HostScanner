@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ET
 from ipaddress import IPv4Network
 import json
 import redis
-from check_targets_utils import (
+from .check_targets_utils import (
     CheckTargetsConfig,
     ScanType,
     NmapParseException,

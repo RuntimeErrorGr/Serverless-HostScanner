@@ -418,7 +418,7 @@ def get_findings_by_port(
             Finding.port, Finding.protocol
         ).order_by(
             func.count(Finding.id).desc()
-        ).limit(10).all()
+        ).limit(7).all()
 
         return [
             {
@@ -449,7 +449,7 @@ def get_findings_by_service(
             Finding.service
         ).order_by(
             func.count(Finding.id).desc()
-        ).limit(10).all()
+        ).limit(7).all()
 
         return [
             {
@@ -583,61 +583,6 @@ def get_findings_by_severity(
         log.error(f"Error fetching findings by severity: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch findings by severity")
 
-# System Monitoring Endpoints (Mock implementations for now)
-@router.get("/system/overview")
-def get_system_overview(user: OIDCUser = Depends(require_admin_role())):
-    """Get system overview (mock implementation)"""
-    # This would typically integrate with Kubernetes APIs or monitoring systems
-    # For now, returning mock data structure that matches the frontend expectations
-    return {
-        "clusters": [
-            {
-                "name": "Main Cluster",
-                "status": "healthy",
-                "nodes": 3,
-                "pods": 24,
-                "deployments": 8,
-                "services": 12,
-                "uptime": "99.98%",
-                "lastIncident": "2025-04-15T08:30:00Z",
-            },
-            {
-                "name": "OpenFaaS Cluster",
-                "status": "healthy",
-                "nodes": 1,
-                "pods": 1,
-                "deployments": 1,
-                "services": 1,
-                "uptime": "99.98%",
-                "lastIncident": "2025-04-15T08:30:00Z",
-            }
-        ],
-        "deployments": [],
-        "nodes": [],
-        "resourceUsage": {"cpu": [], "memory": [], "disk": []},
-        "services": [],
-        "openfaas": {"functions": [], "invocations": [], "duration": []},
-    }
-
-@router.get("/system/clusters")
-def get_cluster_status(user: OIDCUser = Depends(require_admin_role())):
-    """Get cluster status (mock implementation)"""
-    return []
-
-@router.get("/system/resources") 
-def get_resource_usage(user: OIDCUser = Depends(require_admin_role())):
-    """Get resource usage (mock implementation)"""
-    return {"cpu": [], "memory": [], "disk": []}
-
-@router.get("/system/nodes")
-def get_node_metrics(user: OIDCUser = Depends(require_admin_role())):
-    """Get node metrics (mock implementation)"""
-    return []
-
-@router.get("/system/openfaas")
-def get_openfaas_metrics(user: OIDCUser = Depends(require_admin_role())):
-    """Get OpenFaaS metrics (mock implementation)"""
-    return {"functions": [], "invocations": [], "duration": []}
 
 @router.get("/check-ban-status")
 def check_ban_status(

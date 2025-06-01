@@ -223,10 +223,39 @@ class CheckTargetsOptions:
             return "--traceroute" if self.traceroute else ""
         
         def get_ssl_scan_flag() -> str:
-            return "--script-updatedb --script=ssl-cert,ssl-poodle,ssl-enum-ciphers,ssl-heartbleed,ssh-publickey-acceptance,xmpp-brute" if self.ssl_scan else ""
+            if self.ssl_scan:
+                return (
+                    "--script-updatedb --script="
+                    "ssl-cert,"
+                    "ssl-dh-params,"
+                    "ssl-poodle,"
+                    "ssl-enum-ciphers,"
+                    "ssl-heartbleed,"
+                    "ssh-publickey-acceptance"
+                )
+            return ""
 
         def get_http_headers_flag() -> str:
-            return "--script-updatedb --script=http-headers,http-cookie-flags,http-phpself-xss,http-xssed.nse,http-csrf.nse,http-shellshock,http-sql-injection,http-title,http-server-header,auth-spoof,redis-brute,redis-info" if self.http_headers else ""
+            if self.http_headers:
+                return (
+                    "--script-updatedb --script="
+                    "http-headers,"
+                    "http-enum,"
+                    "http-stored-xss.nse,"
+                    "http-dombased-xss.nse,"
+                    "http-cookie-flags,"
+                    "http-phpself-xss,"
+                    "http-rfi-spider,"
+                    "http-xssed.nse,"
+                    "http-csrf.nse,"
+                    "http-sql-injection,"
+                    "http-title,"
+                    "http-server-header,"
+                    "redis-brute,"
+                    "ftp-brute,"
+                    "redis-info"
+                )
+            return ""
 
         # Get TCP scan type (only one can be used)
         def get_tcp_scan_flag() -> str:

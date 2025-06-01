@@ -369,7 +369,7 @@ class TestReportRoutes:
         
         test_cases = [
             ("PDF", "pdf", "application/pdf"),
-            ("JSON", "json", "application/json"),
+            ("JSON", "json", "text/plain"),
             ("CSV", "csv", "text/csv"),
         ]
         

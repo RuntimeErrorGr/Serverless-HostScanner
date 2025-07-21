@@ -103,6 +103,64 @@ The scanning process is **asynchronous** and transitions through a defined set o
 ## Platform level
 <img width="751" height="971" alt="platform level architecture drawio" src="https://github.com/user-attachments/assets/870ebeb0-3855-4813-b050-26ece2284544" />
 
+The Web Client Cluster consists of several interconnected components:
+
+- **Keycloak Pod**  
+  Handles authentication using [Keycloak](https://www.keycloak.org/), an open-source identity and access management solution. It communicates with the Webserver via a dedicated API for user CRUD operations and callbacks.
+
+- **Keycloak PostgreSQL Pod**  
+  Acts as persistent storage for user data managed by Keycloak.
+
+- **Webserver Pod**  
+  Composed of three distinct microservices. All configurations and environment variables are mounted from Kubernetes Secrets.
+
+- **Nginx Proxy**  
+  Balances traffic between the backend and frontend microservices based on route structure. Allows access from both the browser and API clients.
+
+- **FastAPI Backend**  
+  Serves as the core API that implements application logic and acts as middleware between the frontend and backend services. It integrates with:
+  - **MariaDB** (for business logic data)
+  - **Redis** (for async processing and pub/sub)
+  - **Celery** (task queue)
+  - **Keycloak** (authentication)
+  - **External mail service** (email delivery)
+
+- **React Frontend**  
+  A Single Page Application (SPA) that:
+  - Implements authentication via Keycloak
+  - Interacts with the backend through API calls
+  - Sends Bearer tokens (from Keycloak) for secured requests
+
+- **Redis Pod**  
+  A key-value store used for:
+  - Asynchronous operations (via Celery)
+  - Publish/subscribe messaging
+  - Scan task coordination
+
+- **MariaDB Pod**  
+  Persistent storage for business logic data. Requires a synchronization layer with Keycloak PostgreSQL to maintain user entity consistency.
+
+- **Celery Worker Pod**  
+  Executes background tasks pulled from Redis. Delegates scan jobs to the Serverless Cluster and manages their lifecycle.
+
+---
+
+### Serverless Cluster
+
+The Serverless Cluster uses [OpenFaaS](https://www.openfaas.com/) on Kubernetes to support scalable function execution.
+
+- **OpenFaaS Gateway Pod**  
+  Acts as the central API to deploy, monitor, and scale functions.
+
+- **NATS Queue Pod**  
+  Manages asynchronous task execution for OpenFaaS, similar to Redis in the Web Cluster.
+
+- **OpenFaaS Function Pod**  
+  Executes the scanning logic. During execution, it publishes updates to Redis, which are then consumed by Celery workers.
+
+- **OpenFaaS Prometheus Pod**  
+  Collects metrics and supports auto-scaling via the Alert Manager.
+  
 ## Infrastructure level
 <img width="728" height="889" alt="topologie drawio" src="https://github.com/user-attachments/assets/c9517e50-97b9-4b04-b1d3-5f142f386f04" />
 
@@ -122,5 +180,8 @@ Asynchronous tasks are managed by the **Celery** distributed processing queue. O
 **Celery** was selected due to its strong compatibility with FastAPI and its ease of development.
 
 <img width="1899" height="910" alt="dashboard-image" src="https://github.com/user-attachments/assets/bc3b52f1-6432-48f1-8093-1b71e20fad23" />
+<img width="1601" height="835" alt="scan-running" src="https://github.com/user-attachments/assets/5bcdd963-c831-48e0-9d9d-f0eab5fd4ba4" />
+<img width="445" height="785" alt="scanmodal" src="https://github.com/user-attachments/assets/821cd3e8-7f83-4b80-9057-5d80891ed67d" />
+
 
 

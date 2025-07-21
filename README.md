@@ -1,5 +1,7 @@
 # Host Scanner
 
+<img width="1899" height="910" alt="dashboard-image" src="https://github.com/user-attachments/assets/bc3b52f1-6432-48f1-8093-1b71e20fad23" />
+
 *Host Scanner* — a lightweight penetration testing SaaS platform built on the Function-as-a-Service (FaaS) cloud philosophy.
 
 The platform is composed of three systems:
@@ -179,7 +181,7 @@ Asynchronous tasks are managed by the **Celery** distributed processing queue. O
 
 **Celery** was selected due to its strong compatibility with FastAPI and its ease of development.
 
-<img width="1899" height="910" alt="dashboard-image" src="https://github.com/user-attachments/assets/bc3b52f1-6432-48f1-8093-1b71e20fad23" />
+
 <img width="1601" height="835" alt="scan-running" src="https://github.com/user-attachments/assets/5bcdd963-c831-48e0-9d9d-f0eab5fd4ba4" />
 <img width="445" height="785" alt="scanmodal" src="https://github.com/user-attachments/assets/821cd3e8-7f83-4b80-9057-5d80891ed67d" />
 

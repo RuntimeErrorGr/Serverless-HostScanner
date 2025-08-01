@@ -180,10 +180,18 @@ For asynchronous processing and publish/subscribe operations, a non-relational *
 Asynchronous tasks are managed by the **Celery** distributed processing queue. One Celery worker was deployed on each of the three worker nodes in the cluster to evenly distribute scanning tasks.
 
 **Celery** was selected due to its strong compatibility with FastAPI and its ease of development.
-
-
-<img width="1601" height="835" alt="scan-running" src="https://github.com/user-attachments/assets/5bcdd963-c831-48e0-9d9d-f0eab5fd4ba4" />
+To start a new scan you have to complete this modal and press enter:
 <img width="445" height="785" alt="scanmodal" src="https://github.com/user-attachments/assets/821cd3e8-7f83-4b80-9057-5d80891ed67d" />
+
+
+This  is what you'll see during the scan:
+<img width="1601" height="835" alt="scan-running" src="https://github.com/user-attachments/assets/5bcdd963-c831-48e0-9d9d-f0eab5fd4ba4" />
+
+This is an example of a finding from a scan:
+<img width="1599" height="758" alt="findings" src="https://github.com/user-attachments/assets/30549f8e-3556-4032-85fd-9ae95b5bff8e" />
+
+
+
 
 
 
